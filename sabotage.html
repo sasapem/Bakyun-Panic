@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>妨害コントローラー</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0218; color: #fff;
+  font-family: "Hiragino Maru Gothic ProN", sans-serif; font-weight: 900;
+}
+body { display: flex; flex-direction: column; padding: 0; }
+
+.header {
+  padding: 1vh 3vw;
+  text-align: center;
+  background: rgba(0,0,0,.5);
+}
+.header .title { font-size: 4.5vw; color: #ff4081; text-shadow: 2px 2px 0 #000; letter-spacing: .1em; }
+.header .sub { font-size: 2.8vw; color: #aaa; margin-top: .3vh; }
+
+.mirror-bar {
+  padding: 1vh 3vw;
+  display: flex; justify-content: space-around; align-items: center;
+  gap: 2vw;
+  background: rgba(0,0,0,.4);
+  border-bottom: 3px solid #333;
+}
+.mbox {
+  font-size: 3.5vw; font-weight: 900;
+  color: #ffeb3b;
+  background: rgba(0,0,0,.6);
+  padding: .8vh 2vw;
+  border: 2px solid #ffeb3b;
+  border-radius: 100px;
+}
+.mbox.fever { color: #ff4081; border-color: #ff4081; animation: feverFlash .3s infinite alternate; }
+@keyframes feverFlash { from { opacity:.7; } to { opacity:1; } }
+.mbox b { color: #fff; margin-left: 1vw; font-size: 4.5vw; }
+
+.target-zone {
+  flex: 1;
+  position: relative;
+  margin: 2vw;
+  background:
+    linear-gradient(180deg, #1b5e20 0%, #2e7d32 60%, #4a3728 100%);
+  border: 4px solid #ffeb3b;
+  overflow: hidden;
+  cursor: crosshair;
+}
+.target-zone.disabled {
+  opacity: .35;
+  cursor: not-allowed;
+  background: linear-gradient(180deg, #1a1a1a, #0a0a0a);
+  border-color: #555;
+}
+.target-zone .hint-text {
+  position: absolute;
+  bottom: 1vh; left: 0; right: 0;
+  text-align: center;
+  font-size: 3vw; color: #fff;
+  text-shadow: 2px 2px 0 #000;
+  opacity: .7;
+  pointer-events: none;
+  letter-spacing: .05em;
+  z-index: 1;
+}
+.target-zone.disabled .hint-text { color: #888; }
+
+.target-paint {
+  position: absolute;
+  width: 15vh; height: 15vh;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: targetPaintFade 1.2s ease-out forwards;
+  filter: blur(2px);
+}
+
+/* ミラー表示: 敵キャラのミニアイコン */
+.mini-mole {
+  position: absolute;
+  width: 7vh; height: 7vh;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 3px solid #fff;
+  pointer-events: none;
+  font-size: 4vh;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  background: #4caf50;
+}
+.mini-mole.slime   { background: #4caf50; }
+.mini-mole.ghost   { background: #ffffff; }
+.mini-mole.blob    { background: #26c6da; }
+.mini-mole.chick   { background: #ffeb3b; }
+.mini-mole.bat     { background: #9c27b0; }
+.mini-mole.pumpkin { background: #ff9800; }
+.mini-mole.golden  { background: #ffd700; box-shadow: 0 0 12px #ffd700; }
+.mini-mole.bomb    { background: #d32f2f; border-color: #ff1744; box-shadow: 0 0 12px #ff1744; }
+.mini-mole.bomb::after { content: '⚠'; font-size: 5vh; color: #fff; }
+@keyframes targetPaintFade {
+  0% { opacity: .9; transform: translate(-50%, -50%) scale(.2); }
+  40% { opacity: .9; transform: translate(-50%, -50%) scale(1.2); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
+.cd-bar { height: 1.5vh; background: rgba(0,0,0,.6); border-top: 2px solid #333; border-bottom: 2px solid #333; }
+.cd-fill { height: 100%; background: linear-gradient(90deg, #ff4081, #ffeb3b); width: 100%; transition: width .1s linear; }
+
+.bottom-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1vh 3vw;
+  background: rgba(0,0,0,.6);
+  font-size: 3vw; color: #aaa;
+}
+.bottom-row b { color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="title">🎨 ペイント妨害 🎨</div>
+  <div class="sub">画面のどこかをタップ!ペンキで視界を奪え</div>
+</div>
+
+<div class="mirror-bar">
+  <div class="mbox">⏱ <b id="mRemain">—</b></div>
+  <div class="mbox">💥 <b id="mScore">—</b></div>
+  <div class="mbox" id="mFever" style="display:none;">🔥 FEVER</div>
+</div>
+
+<div class="target-zone" id="targetZone">
+  <div class="hint-text" id="hintText">タップでペンキ発射!</div>
+</div>
+
+<div class="cd-bar"><div class="cd-fill" id="cdFill"></div></div>
+
+<div class="bottom-row">
+  <span id="statusL">接続中…</span>
+  <span>💥 成功数 <b id="myCount">0</b></span>
+</div>
+
+<script>
+const COOLDOWN_MS = 6000;
+const COLORS = ['#ff1744','#00c853','#2979ff','#ffd600','#d500f9','#ff6d00','#00e5ff'];
+let myId = null, myName = '';
+let lastFireT = 0;
+let totalCount = 0;
+const state = { gameActive: false };
+
+const zone = document.getElementById('targetZone');
+const cdFill = document.getElementById('cdFill');
+const statusL = document.getElementById('statusL');
+
+async function register(){
+  const name = (prompt('あなたの名前は? (結果画面で発表)', '') || '').trim();
+  try {
+    const res = await fetch('/api/register', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name})
+    });
+    const data = await res.json();
+    myId = data.id; myName = data.name;
+    statusL.textContent = `${myName} として参加中`;
+    updateState();
+    pollGameStatus();
+  } catch(e){
+    statusL.textContent = '接続失敗、再試行中';
+    setTimeout(register, 2000);
+  }
+}
+
+function updateState(){
+  const now = Date.now();
+  const remainMs = Math.max(0, COOLDOWN_MS - (now - lastFireT));
+  const cdReady = remainMs === 0;
+  // ゲーム未開始 or クールダウン中 → 無効化
+  const enabled = cdReady && state.gameActive;
+  zone.classList.toggle('disabled', !enabled);
+  const pct = cdReady ? 100 : ((1 - remainMs / COOLDOWN_MS) * 100);
+  cdFill.style.width = pct + '%';
+  if (!cdReady) requestAnimationFrame(updateState);
+}
+
+async function pollGameStatus(){
+  while(true){
+    try {
+      const res = await fetch('/api/game-status');
+      const s = await res.json();
+      document.getElementById('mRemain').textContent = (s.remainS != null ? s.remainS : '—') + 's';
+      document.getElementById('mScore').textContent = (s.score != null ? s.score : '—');
+      const fever = document.getElementById('mFever');
+      fever.style.display = s.isFever ? 'inline-block' : 'none';
+      // ゲームがプレイ中以外は妨害不可
+      state.gameActive = (s.phase === 'playing');
+      updateState();
+      if (!state.gameActive){
+        document.getElementById('hintText').textContent = 'メインプレイヤーがゲーム開始するまでお待ちください';
+        // ミニモグラも消す
+        document.querySelectorAll('.mini-mole').forEach(el => el.remove());
+      } else {
+        document.getElementById('hintText').textContent = 'タップでペンキ発射!';
+        renderMiniMoles(s.moles || []);
+      }
+    } catch(e){}
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+function renderMiniMoles(moles){
+  const z = document.getElementById('targetZone');
+  const seen = new Set();
+  moles.forEach(m => {
+    seen.add(m.id);
+    const id = 'mm-' + m.id;
+    let el = document.getElementById(id);
+    if (!el){
+      el = document.createElement('div');
+      el.id = id;
+      el.className = 'mini-mole ' + (m.char || '');
+      z.appendChild(el);
+    }
+    el.style.left = ((m.x||.5) * 100) + '%';
+    el.style.top  = ((m.y||.5) * 100) + '%';
+  });
+  // 消えた奴らを除去
+  z.querySelectorAll('.mini-mole').forEach(el => {
+    const id = parseInt(el.id.replace('mm-',''));
+    if (!seen.has(id)) el.remove();
+  });
+}
+
+async function onTap(ev){
+  if (!state.gameActive) return;
+  const now = Date.now();
+  if (now - lastFireT < COOLDOWN_MS) return;
+  if (!myId) return;
+  // タップ位置(ゾーン内の正規化座標)
+  const rect = zone.getBoundingClientRect();
+  const point = ev.touches ? ev.touches[0] : ev;
+  const nx = (point.clientX - rect.left) / rect.width;
+  const ny = (point.clientY - rect.top) / rect.height;
+  const color = COLORS[Math.floor(Math.random()*COLORS.length)];
+  // ローカルのフィードバック
+  const p = document.createElement('div');
+  p.className = 'target-paint';
+  p.style.left = (nx * 100) + '%';
+  p.style.top = (ny * 100) + '%';
+  p.style.background = color;
+  zone.appendChild(p);
+  setTimeout(() => p.remove(), 1200);
+  if (navigator.vibrate) try { navigator.vibrate(50); } catch(e){}
+  lastFireT = now;
+  updateState();
+  try {
+    const res = await fetch('/api/sabotage', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({id: myId, action:'paint', x: nx, y: ny, color})
+    });
+    const data = await res.json();
+    if (data.ok){
+      totalCount++;
+      document.getElementById('myCount').textContent = totalCount;
+    } else if (data.reason === 'cooldown' && data.waitMs){
+      lastFireT = Date.now() - (COOLDOWN_MS - data.waitMs);
+      updateState();
+    }
+  } catch(e){}
+}
+
+zone.addEventListener('click', onTap);
+zone.addEventListener('touchstart', (e) => { e.preventDefault(); onTap(e); }, {passive:false});
+
+register();
+</script>
+</body>
+</html>

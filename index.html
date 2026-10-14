@@ -1,0 +1,2580 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-touch-fullscreen" content="yes">
+<title>バキューンパニック</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  /* ====================================================================
+   * 見た目: レトロアーケード + ピクセル調
+   * 高コントラスト、暗い空間のプロジェクター投影を意識
+   * ==================================================================== */
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff;
+    font-family: "Courier New","Monaco","Hiragino Maru Gothic ProN",monospace;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    font-weight: 900; letter-spacing: .1em;
+  }
+
+  /* CRT scanline overlay (全体に乗せる) */
+  .crt {
+    position: fixed; inset: 0; z-index: 1000; pointer-events: none;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0px, rgba(0,0,0,.18) 2px, transparent 2px, transparent 4px),
+      radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.55) 100%);
+    mix-blend-mode: multiply;
+  }
+
+  .stage {
+    position: relative;
+    width: 100vw; height: 100vh;
+    background: #0a0218;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(156,39,176,.15), transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(0,188,212,.15), transparent 50%),
+      linear-gradient(180deg, #0a0218 0%, #180a35 50%, #050012 100%);
+  }
+
+  /* スパークル(高コンボ時のヒット) */
+  .sparkle {
+    position: fixed;
+    width: 18px; height: 18px;
+    background: radial-gradient(circle, #fff 0%, #ffeb3b 40%, transparent 70%);
+    border-radius: 50%;
+    box-shadow: 0 0 12px #fff, 0 0 24px #ffeb3b;
+    pointer-events: none;
+    z-index: 100;
+    transform: translate(-50%, -50%);
+    animation: sparkleFly 0.65s ease-out forwards;
+  }
+  @keyframes sparkleFly {
+    0%   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(.2); opacity: 0; }
+  }
+
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 3vh 4vw;
+  }
+  .hidden { display: none !important; }
+
+  /* ==============================
+   * タイトル画面
+   * ============================== */
+  #titleScreen {
+    overflow-y: auto;
+    justify-content: flex-start;
+    padding-top: 4vh;
+    padding-bottom: 4vh;
+  }
+  .scroll-hint {
+    margin-top: 5vh; font-size: 3vh; color: #555;
+    letter-spacing: .1em;
+    animation: bounceHint 1.4s ease-in-out infinite;
+  }
+  @keyframes bounceHint { 0%,100%{transform:translateY(0);} 50%{transform:translateY(10px);} }
+  #titleScreen .logo {
+    font-family: 'DotGothic16','Courier New',monospace;
+    font-size: 13vh; font-weight: 400;  /* Dot font はweight 400 */
+    color: #ffeb3b;
+    text-align: center;
+    line-height: .95;
+    letter-spacing: .1em;
+    -webkit-font-smoothing: none;
+    font-smooth: never;
+    image-rendering: pixelated;
+    text-shadow:
+      4px 0 #000, -4px 0 #000, 0 4px #000, 0 -4px #000,
+      4px 4px 0 #000, -4px 4px 0 #000, 4px -4px 0 #000, -4px -4px 0 #000,
+      8px 8px 0 #c62828,
+      12px 12px 0 #000;
+  }
+  #titleScreen .logo-sub {
+    font-size: 4vh; color: #00e5ff; margin-top: 2vh;
+    text-shadow: 2px 2px 0 #000, 0 0 12px #00e5ff;
+  }
+  #titleScreen .desc {
+    font-size: 3vh; margin: 4vh 0 2vh; color: #fff;
+    line-height: 1.6; text-shadow: 2px 2px 0 #000;
+  }
+  .char-guide {
+    display: flex; gap: 2vw; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 2vh;
+    font-size: 2.5vh; color: #fff;
+    background: rgba(0,0,0,.5);
+    border: 2px solid rgba(255,255,255,.3);
+    padding: 1vh 2vw;
+  }
+  .char-guide span { display: flex; align-items: center; gap: .6vw; white-space: nowrap; }
+  .cdot { display: inline-block; width: 2.2vh; height: 2.2vh; border: 2px solid #000; box-shadow: 0 0 0 1px #fff; }
+
+  /* タイトル画面 左右分割 */
+  .title-main {
+    display: flex; gap: 4vw; margin-top: 2vh;
+    width: 95vw; max-width: 1100px;
+    align-items: flex-start;
+  }
+  .title-left { flex: 1.3; display: flex; flex-direction: column; align-items: center; }
+  .title-right {
+    flex: 1;
+    background: rgba(0,0,0,.7);
+    border: 4px solid #ffeb3b;
+    padding: 2vh 2vw;
+    box-shadow: 6px 6px 0 rgba(255,235,59,.2);
+  }
+  .hiscore-title {
+    font-size: 4vh; color: #ffeb3b;
+    text-align: center;
+    margin-bottom: 1.5vh;
+    letter-spacing: .2em;
+    text-shadow: 2px 2px 0 #000;
+  }
+  .hiscore-list { display: flex; flex-direction: column; gap: .5vh; }
+  .hiscore-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .6vh 1.5vw;
+    font-size: 2.4vh;
+    color: #fff;
+    background: rgba(255,255,255,.06);
+    border-left: 4px solid transparent;
+  }
+  .hiscore-row.r1 { border-left-color: #ffd700; color: #ffd700; font-size: 2.8vh; }
+  .hiscore-row.r2 { border-left-color: #c0c0c0; color: #e0e0e0; }
+  .hiscore-row.r3 { border-left-color: #cd7f32; color: #ffab7a; }
+  .hiscore-row .rank { width: 3.5vh; text-align: right; opacity: .8; }
+  .hiscore-row .name { flex: 1; padding: 0 1vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hiscore-row .sc { font-weight: 900; color: #ffeb3b; }
+  .hiscore-empty { color: #888; text-align: center; padding: 2vh; font-size: 2.3vh; }
+
+  .sabotage-qr {
+    margin-top: 2vh;
+    padding: 1.5vh;
+    border: 3px dashed #ff4081;
+    text-align: center;
+    background: rgba(255,64,129,.08);
+  }
+  .sabotage-title { font-size: 2.6vh; color: #ff4081; margin-bottom: 1vh; letter-spacing: .1em; }
+  .sabotage-qr img { width: 16vh; height: 16vh; background: #fff; padding: .5vh; }
+  .sabotage-sub { font-size: 2vh; color: #ff80ab; margin-top: .5vh; }
+
+  /* モードセレクター */
+  .mode-selector {
+    display: flex; gap: 2vw; margin-bottom: 3vh;
+  }
+  .mode-btn {
+    padding: 1.5vh 3vw;
+    font-size: 2.8vh; font-weight: 900;
+    font-family: inherit;
+    background: rgba(0,0,0,.6);
+    color: #fff;
+    border: 3px solid #00e5ff;
+    box-shadow: 4px 4px 0 rgba(0,229,255,.25);
+    cursor: pointer;
+    letter-spacing: .1em;
+    line-height: 1.3;
+    text-align: center;
+  }
+  .mode-btn small { font-size: 1.8vh; opacity: .7; font-weight: 400; }
+  .mode-btn.active {
+    background: #00e5ff; color: #000;
+    box-shadow: 4px 4px 0 #000;
+  }
+  .mode-btn:active { transform: translate(2px,2px); box-shadow: 2px 2px 0 rgba(0,229,255,.25); }
+
+  .btn {
+    padding: 2.5vh 10vw; font-size: 5vh; font-weight: 900;
+    font-family: inherit; letter-spacing: .2em;
+    background: #ff4081; color: #fff;
+    border: 5px solid #fff;
+    border-radius: 0;  /* 四角いほうがレトロ感 */
+    box-shadow: 8px 8px 0 #000, 8px 8px 0 4px rgba(255,64,129,.3);
+    cursor: pointer;
+    animation: pulseBtn 1.4s ease-in-out infinite;
+  }
+  .btn:active { transform: translate(4px, 4px); box-shadow: 4px 4px 0 #000; }
+  @keyframes pulseBtn { 0%,100%{transform:scale(1);} 50%{transform:scale(1.04);} }
+
+  /* ==============================
+   * HUD (上部)
+   * ============================== */
+  .hud {
+    position: absolute; top: 2vh; left: 0; right: 0;
+    display: flex; justify-content: space-between; padding: 0 3vw;
+    z-index: 5;
+  }
+  .hud-box {
+    background: #000;
+    border: 4px solid #ffeb3b;
+    padding: 1.2vh 3vw;
+    font-size: 5vh; font-weight: 900;
+    color: #ffeb3b;
+    letter-spacing: .15em;
+    text-shadow: 0 0 8px rgba(255,235,59,.6);
+    box-shadow: 6px 6px 0 rgba(255,235,59,.15);
+  }
+  .hud-box.time { border-color: #00e5ff; color: #00e5ff; text-shadow: 0 0 8px rgba(0,229,255,.6); }
+  .hud-box.time.warn { border-color: #ff5252; color: #ff5252; animation: flash .3s linear infinite; }
+  @keyframes flash { 0%,49%{opacity:1;} 50%,100%{opacity:.6;} }
+
+  /* ==============================
+   * 穴レイアウト (3列 x 2行)
+   * ============================== */
+  /* 穴は非表示(常に画面全体からスポーン) */
+  .holes { display: none; }
+  .hole {
+    position: relative;
+    border-radius: 50% / 45%;
+    /* 穴の黒さ+奥行き */
+    background:
+      radial-gradient(ellipse 85% 90% at 50% 60%, #000 0%, #0a0000 35%, #3a1a00 80%, #5a2b00 100%);
+    box-shadow:
+      inset 0 6vh 3vh rgba(0,0,0,.98),
+      inset 0 -1vh 2vh rgba(255,170,60,.15),
+      0 10px 20px rgba(0,0,0,.6);
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .holes.fever-hidden {
+    opacity: 0;
+    transform: scale(.5);
+    pointer-events: none;
+  }
+
+  /* キャラ湧き出しレイヤー(デフォルト全画面) */
+  .fever-layer {
+    position: absolute;
+    left: 2vw; right: 2vw;
+    top: 11vh; bottom: 3vh;
+    z-index: 4;
+    pointer-events: none;
+  }
+  .fever-layer.fever-active {
+    /* FEVER中: ちょっと範囲が広がる雰囲気演出(任意) */
+    left: 0; right: 0; top: 9vh; bottom: 0;
+  }
+  .fever-mole {
+    position: absolute;
+    width: 16vh; height: 16vh;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;
+    cursor: pointer;
+    animation: feverMolePop .3s cubic-bezier(.2, 1.8, .5, 1);
+  }
+  /* 罠キャラ: 明らかに悪そうな演出(誰が見ても避けたいと感じる) */
+  .fever-mole.trap {
+    filter: drop-shadow(0 0 18px #ff1744) drop-shadow(0 0 30px #900);
+    animation: trapShake .25s ease-in-out infinite alternate, trapAppear .3s ease-out;
+  }
+  @keyframes trapShake {
+    from { transform: translate(-50%, -50%) rotate(-3deg); }
+    to   { transform: translate(-50%, -50%) rotate(3deg); }
+  }
+  @keyframes trapAppear {
+    from { transform: translate(-50%, -50%) scale(0); }
+    to   { transform: translate(-50%, -50%) scale(1); }
+  }
+  /* 真っ赤な放射光 */
+  .fever-mole.trap::before {
+    content: '';
+    position: absolute; inset: -50%;
+    background: radial-gradient(circle, rgba(255,23,68,.35) 0%, transparent 60%);
+    animation: trapAura .4s ease-in-out infinite alternate;
+    pointer-events: none;
+    z-index: -1;
+  }
+  @keyframes trapAura {
+    from { opacity: .5; }
+    to   { opacity: 1; }
+  }
+  /* 「キケン」テキスト表示 */
+  .fever-mole.trap::after {
+    content: 'キケン';
+    position: absolute;
+    top: -25%; left: 50%;
+    transform: translateX(-50%);
+    font-size: 3vh;
+    color: #ff1744;
+    font-weight: 900;
+    background: #000;
+    border: 2px solid #ff1744;
+    padding: 0.2vh 1vw;
+    white-space: nowrap;
+    text-shadow: 0 0 6px #ff1744;
+    animation: trapWarn .4s ease-in-out infinite alternate;
+  }
+  @keyframes trapWarn {
+    from { transform: translateX(-50%) scale(1); }
+    to   { transform: translateX(-50%) scale(1.12); }
+  }
+  .fever-mole.hit { animation: feverMoleHit .35s ease-out forwards; }
+  @keyframes feverMolePop {
+    from { opacity: 0; transform: translate(-50%, -50%) scale(0) rotate(-20deg); }
+    to   { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0); }
+  }
+  @keyframes feverMoleHit {
+    0%   { transform: translate(-50%, -50%) scale(1); }
+    50%  { transform: translate(-50%, -50%) scale(1.3) rotate(-20deg); }
+    100% { transform: translate(-50%, -50%) scale(.3) rotate(30deg); opacity: 0; }
+  }
+
+  /* 穴の縁の地面感 */
+  .hole::before {
+    content: '';
+    position: absolute; left: 5%; right: 5%; top: -3%;
+    height: 28%;
+    background: radial-gradient(ellipse at 50% 100%, rgba(120,70,30,.7), transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  /* α: 穴のサイズが使用度で変化(AIが介入) */
+  .hole {
+    transition: transform .5s cubic-bezier(.4,1.3,.4,1);
+  }
+  /* ヒット多い=得意 → 縮めて負荷をかける */
+  .hole.hot {
+    transform: scale(0.82);
+    box-shadow:
+      inset 0 6vh 3vh rgba(0,0,0,.95),
+      inset 0 -1vh 2vh rgba(255,120,50,.3),
+      0 0 20px rgba(255,100,50,.4),
+      0 10px 20px rgba(0,0,0,.6);
+  }
+  .hole.hot.lv2 { transform: scale(0.72); }
+  .hole.hot.lv3 { transform: scale(0.62); }
+  /* ミス多い=苦手 → 広げて救済(ほんの少し) */
+  .hole.cold {
+    transform: scale(1.08);
+    box-shadow:
+      inset 0 6vh 3vh rgba(0,0,0,.95),
+      inset 0 -1vh 3vh rgba(100,180,255,.25),
+      0 0 18px rgba(100,180,255,.3),
+      0 10px 20px rgba(0,0,0,.6);
+  }
+
+  /* キャラ */
+  .mole {
+    position: absolute;
+    left: 50%; bottom: 8%;
+    width: 72%; aspect-ratio: 1;
+    transform: translate(-50%, 100%);
+    transition: transform .18s cubic-bezier(.2, 1.8, .5, 1);
+    pointer-events: none;
+  }
+  .mole.up { transform: translate(-50%, 0%); }
+  .mole.hit {
+    animation: moleHit .4s ease-out forwards;
+  }
+  /* ゴールデンキャラ: 光と震え */
+  .mole.golden {
+    filter: drop-shadow(0 0 12px #ffd700) drop-shadow(0 0 30px #ffeb3b);
+    animation: goldShake 0.4s infinite alternate;
+  }
+  @keyframes goldShake {
+    from { transform: translate(-50%, 0) scale(1); }
+    to   { transform: translate(-50%, -2%) scale(1.06); }
+  }
+  .mole.up.golden { animation: goldShake 0.4s infinite alternate; }
+
+  /* レアキャラの「消える直前」警告点滅 */
+  .mole.warning {
+    animation: warningBlink .18s steps(2) infinite !important;
+  }
+  @keyframes warningBlink {
+    0%,49% { filter: drop-shadow(0 0 20px #ff5252) brightness(1.4) saturate(1.5); }
+    50%,100% { filter: drop-shadow(0 0 10px #fff) brightness(.7); }
+  }
+
+  /* ヒット時の画面揺れ */
+  .stage.shake { animation: screenShake .15s ease-out; }
+  @keyframes screenShake {
+    0%,100% { transform: translate(0,0); }
+    25% { transform: translate(-4px, 2px); }
+    50% { transform: translate(3px, -2px); }
+    75% { transform: translate(-2px, 1px); }
+  }
+
+  /* レアを逃した時の残念フラッシュ */
+  .miss-rare-flash {
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 25;
+    background: radial-gradient(circle at 50% 40%, rgba(80,0,0,.35), rgba(0,0,0,.55) 80%);
+    animation: regretFade .6s ease-out forwards;
+  }
+  @keyframes regretFade {
+    0% { opacity: 0; }
+    30% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .miss-rare-text {
+    position: absolute; top: 35%; left: 50%;
+    transform: translateX(-50%);
+    font-size: 8vh; font-weight: 900;
+    color: #ff5252;
+    text-shadow: 3px 3px 0 #000, 0 0 20px #ff5252;
+    z-index: 26; pointer-events: none;
+    animation: regretText 1s ease-out forwards;
+  }
+  @keyframes regretText {
+    0% { opacity: 0; transform: translateX(-50%) scale(.5); }
+    20% { opacity: 1; transform: translateX(-50%) scale(1.2); }
+    100% { opacity: 0; transform: translateX(-50%) scale(1); }
+  }
+  @keyframes moleHit {
+    0%   { transform: translate(-50%, 0) scale(1) rotate(0); }
+    30%  { transform: translate(-50%, -15%) scale(1.35) rotate(-18deg); }
+    100% { transform: translate(-50%, 80%) scale(.3) rotate(25deg); opacity: 0; }
+  }
+
+  /* ピクセル絵スプライト (8x8グリッド) */
+  .sprite {
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    filter: drop-shadow(0 6px 4px rgba(0,0,0,.6));
+  }
+  .sprite > span { display: block; width: 100%; height: 100%; }
+
+  /* ヒット時のスコア表示 */
+  .popup {
+    position: absolute;
+    font-size: 6vh; font-weight: 900;
+    color: #ffeb3b;
+    text-shadow: 3px 3px 0 #000, 0 0 16px #ff4081;
+    pointer-events: none; z-index: 10;
+    transform: translate(-50%, 0);
+    animation: popFly .8s ease-out forwards;
+  }
+  @keyframes popFly {
+    0%   { opacity: 0; transform: translate(-50%, 20%) scale(.5); }
+    25%  { opacity: 1; transform: translate(-50%, -20%) scale(1.6); }
+    100% { opacity: 0; transform: translate(-50%, -160%) scale(1); }
+  }
+
+  /* コンボ表示 */
+  .combo-display {
+    position: absolute;
+    top: 10vh; left: 50%;
+    transform: translateX(-50%);
+    font-size: 5vh;
+    font-weight: 900;
+    color: #ff4081;
+    text-shadow: 3px 3px 0 #000, 0 0 20px #ff4081;
+    z-index: 6;
+    display: none;
+    letter-spacing: .15em;
+  }
+  .combo-display.show { display: block; animation: comboPop .3s ease-out; }
+  .combo-display .mul { color: #ffeb3b; font-size: 1.3em; }
+  @keyframes comboPop {
+    from { transform: translateX(-50%) scale(.5); opacity: 0; }
+    to   { transform: translateX(-50%) scale(1); opacity: 1; }
+  }
+
+  /* FEVER モード */
+  .fever-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    background:
+      repeating-linear-gradient(45deg, rgba(255,0,128,.12) 0px, rgba(255,0,128,.12) 20px, transparent 20px, transparent 40px),
+      radial-gradient(circle at center, transparent 30%, rgba(255,64,129,.2) 100%);
+    animation: feverPulse 0.3s infinite alternate;
+    display: none;
+  }
+  .fever-overlay.show { display: block; }
+  @keyframes feverPulse { from { opacity: .5; } to { opacity: 1; } }
+  .fever-banner {
+    position: absolute; top: 30%; left: 50%;
+    transform: translateX(-50%);
+    font-size: 14vh;
+    font-weight: 900;
+    color: #ff4081;
+    text-shadow: 4px 4px 0 #fff, 8px 8px 0 #000, 0 0 30px #ff4081;
+    z-index: 7;
+    letter-spacing: .1em;
+    pointer-events: none;
+    animation: feverBanner 1.5s ease-out forwards;
+  }
+  @keyframes feverBanner {
+    0% { transform: translateX(-50%) scale(.3); opacity: 0; }
+    20% { transform: translateX(-50%) scale(1.3); opacity: 1; }
+    80% { transform: translateX(-50%) scale(1.1); opacity: 1; }
+    100% { transform: translateX(-50%) scale(1); opacity: 0; }
+  }
+
+  /* ゴールデン登場バナー */
+  .golden-banner {
+    position: absolute; top: 25%; left: 50%;
+    transform: translateX(-50%);
+    font-size: 10vh;
+    font-weight: 900;
+    color: #ffd700;
+    text-shadow: 3px 3px 0 #000, 0 0 30px #ffd700;
+    z-index: 8; pointer-events: none;
+    letter-spacing: .1em;
+    animation: goldenBanner 1.2s ease-out forwards;
+  }
+  @keyframes goldenBanner {
+    0% { transform: translateX(-50%) scale(.3); opacity: 0; }
+    20% { transform: translateX(-50%) scale(1.2); opacity: 1; }
+    100% { transform: translateX(-50%) scale(1); opacity: 0; }
+  }
+
+  .hole.miss { animation: missShake .22s; }
+  @keyframes missShake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+
+  /* 妨害が発動した穴のパルス強調(一瞬光る) */
+  .hole.sab-pulse {
+    animation: sabPulse .8s ease-out;
+    z-index: 5;
+  }
+  @keyframes sabPulse {
+    0%   { outline: 0 solid rgba(255,64,129,0); }
+    15%  { outline: 16px solid rgba(255,64,129,1); }
+    100% { outline: 0 solid rgba(255,64,129,0); }
+  }
+
+  /* ==== ペンキ妨害(スプラトゥーン風) ==== */
+  .paint-splash {
+    position: absolute;
+    width: 20vh; height: 20vh;
+    transform: translate(-50%, -50%) rotate(var(--rot, 0));
+    background: var(--p-color, #ff1744);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 50;
+    opacity: 0;
+    box-shadow:
+      -6vh -2vh 0 -3vh var(--p-color, #ff1744),
+      5vh -3vh 0 -4vh var(--p-color, #ff1744),
+      -3vh 6vh 0 -3vh var(--p-color, #ff1744),
+      7vh 4vh 0 -3vh var(--p-color, #ff1744),
+      0 9vh 0 -5vh var(--p-color, #ff1744);
+    filter: blur(1.5px) drop-shadow(0 3px 6px rgba(0,0,0,.4));
+    animation: paintSplat .35s cubic-bezier(.2, 1.8, .5, 1) forwards, paintFade 5s ease-out forwards;
+  }
+  @keyframes paintSplat {
+    0%   { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot,0)) scale(.2); }
+    60%  { opacity: .95; transform: translate(-50%, -50%) rotate(var(--rot,0)) scale(1.15); }
+    100% { opacity: .95; transform: translate(-50%, -50%) rotate(var(--rot,0)) scale(1); }
+  }
+  @keyframes paintFade {
+    0%,70% { opacity: .95; }
+    100%   { opacity: 0; }
+  }
+  .paint-drip {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    background: var(--p-color, #ff1744);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 49;
+    animation: paintFade 5s ease-out forwards;
+    filter: blur(1px);
+  }
+
+  /* 攻撃バナー(誰がやったか明示、上部に小さく) */
+  .attack-banner {
+    position: absolute;
+    top: 9vh; left: 50%;
+    transform: translateX(-50%);
+    z-index: 55;
+    background: rgba(0,0,0,.85);
+    color: #fff;
+    padding: .6vh 2vw;
+    border: 2px solid #ff4081;
+    font-weight: 900;
+    text-align: center;
+    pointer-events: none;
+    animation: atkBannerAnim 1.8s ease-out forwards;
+    box-shadow: 3px 3px 0 rgba(255,64,129,.3);
+    display: flex; align-items: center; gap: 2vw;
+    white-space: nowrap;
+  }
+  .attack-banner .atk-from {
+    font-size: 2.2vh;
+    color: #ffeb3b;
+    letter-spacing: .08em;
+  }
+  .attack-banner .atk-main {
+    font-size: 2.8vh;
+    letter-spacing: .08em;
+  }
+  @keyframes atkBannerAnim {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    15%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+    85%  { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  }
+
+  /* ==== 画面全体から発生する妨害エフェクト ==== */
+  /* 爆弾投下: 上から落下 */
+  .bomb-drop {
+    position: absolute;
+    font-size: 20vh;
+    left: 50%;
+    top: -25vh;
+    transform: translateX(-50%);
+    z-index: 40;
+    pointer-events: none;
+    filter: drop-shadow(0 0 20px #ff5252);
+    animation: bombFall 0.8s cubic-bezier(.5,0,.8,1) forwards;
+  }
+  @keyframes bombFall {
+    0%   { top: -25vh; transform: translateX(-50%) rotate(0deg); opacity: 1; }
+    80%  { top: var(--target-y, 60vh); transform: translateX(-50%) rotate(540deg); opacity: 1; }
+    100% { top: var(--target-y, 60vh); transform: translateX(-50%) rotate(540deg) scale(2); opacity: 0; }
+  }
+  /* 爆発フラッシュ */
+  .bomb-explosion {
+    position: absolute;
+    inset: 0;
+    z-index: 35;
+    pointer-events: none;
+    background: radial-gradient(circle at var(--ex-x, 50%) var(--ex-y, 60%), rgba(255,200,50,.8), rgba(255,50,50,.4) 30%, transparent 60%);
+    animation: explosionFade .6s ease-out forwards;
+  }
+  @keyframes explosionFade {
+    0% { opacity: 0; }
+    15% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* 凍結: 画面全体が一瞬氷で覆われる */
+  .freeze-overlay {
+    position: absolute; inset: 0;
+    z-index: 35; pointer-events: none;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(200,240,255,.4) 0%, transparent 25%),
+      radial-gradient(circle at 80% 30%, rgba(200,240,255,.4) 0%, transparent 25%),
+      radial-gradient(circle at 50% 70%, rgba(200,240,255,.4) 0%, transparent 30%),
+      linear-gradient(180deg, rgba(150,220,255,.35), rgba(100,200,255,.25));
+    animation: freezeFade .8s ease-out forwards;
+  }
+  @keyframes freezeFade {
+    0%   { opacity: 0; backdrop-filter: blur(0px); }
+    30%  { opacity: 1; backdrop-filter: blur(4px); }
+    100% { opacity: 0; backdrop-filter: blur(0px); }
+  }
+  .ice-crystal {
+    position: absolute;
+    font-size: 8vh;
+    z-index: 36;
+    pointer-events: none;
+    animation: iceCrystalFall 0.9s ease-out forwards;
+    filter: drop-shadow(0 0 10px #00e5ff);
+  }
+  @keyframes iceCrystalFall {
+    0%   { opacity: 0; transform: translateY(-20vh) rotate(0deg); }
+    30%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(100vh) rotate(720deg); }
+  }
+
+  /* 高速化: 画面全体にスピードライン */
+  .speed-lines {
+    position: absolute; inset: 0;
+    z-index: 34; pointer-events: none;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 20px, rgba(255,235,59,.5) 21px, rgba(255,235,59,.5) 23px, transparent 24px 80px);
+    animation: speedScroll .35s linear infinite;
+    opacity: 0;
+  }
+  .speed-lines.show {
+    opacity: 1;
+    animation: speedScroll .35s linear infinite, speedFadeOut 4s ease-out forwards;
+  }
+  @keyframes speedScroll {
+    0% { background-position: 0 0; }
+    100% { background-position: 80px 0; }
+  }
+  @keyframes speedFadeOut {
+    0%,80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* 凍結穴(妨害用) */
+  .hole.frozen {
+    box-shadow:
+      inset 0 6vh 3vh rgba(0,200,255,.35),
+      inset 0 0 40px rgba(0,229,255,.6),
+      0 0 30px rgba(0,229,255,.6),
+      0 10px 20px rgba(0,0,0,.6);
+  }
+  .hole.frozen::after {
+    content: '🧊';
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 10vh;
+    pointer-events: none;
+    filter: drop-shadow(0 0 20px #00e5ff);
+  }
+
+  /* ミッション表示(左上) */
+  .mission-box {
+    position: absolute;
+    left: 2vw; top: 10vh;
+    background: rgba(0,0,0,.8);
+    border: 3px solid #4caf50;
+    padding: 1vh 2vw;
+    min-width: 20vw;
+    color: #fff;
+    font-size: 2.5vh;
+    z-index: 6;
+    display: none;
+    box-shadow: 4px 4px 0 rgba(76,175,80,.3);
+  }
+  .mission-box.show { display: block; }
+  .mission-box.done { border-color: #ffeb3b; color: #ffeb3b; background: rgba(60,40,0,.9); }
+  .mission-box .m-title { font-weight: 900; color: #4caf50; margin-bottom: .3vh; font-size: 2.6vh; }
+  .mission-box.done .m-title { color: #ffeb3b; }
+  .mission-box .m-prog { font-size: 2.8vh; font-weight: 900; letter-spacing: .08em; }
+
+  /* Coop goal bar */
+  .coop-goal {
+    position: absolute; top: 10vh; right: 2vw;
+    background: rgba(0,0,0,.8);
+    border: 3px solid #ff4081;
+    padding: 1vh 2vw;
+    width: 30vw;
+    box-shadow: 4px 4px 0 rgba(255,64,129,.3);
+    z-index: 6;
+  }
+  .coop-label { font-size: 2.5vh; font-weight: 900; color: #ff4081; margin-bottom: .5vh; }
+  .coop-track { height: 2.5vh; background: rgba(255,255,255,.15); border: 2px solid #fff; }
+  .coop-fill { height: 100%; background: linear-gradient(90deg, #ff4081, #ffeb3b); transition: width .3s; width: 0%; }
+
+  /* ==============================
+   * AIコメントボックス(右下)
+   * ============================== */
+  .ai-box {
+    position: absolute;
+    right: 2vw; bottom: 2vh;
+    max-width: 50vw;
+    background: rgba(0,0,0,.85);
+    border: 3px solid #00e5ff;
+    color: #00e5ff;
+    padding: 1.3vh 2.5vw;
+    font-size: 3vh;
+    letter-spacing: .08em;
+    box-shadow: 4px 4px 0 rgba(0,229,255,.3);
+    z-index: 5;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity .3s, transform .3s;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ai-box.show { opacity: 1; transform: translateY(0); }
+  .ai-box::before { content: '🤖 '; color: #ffeb3b; }
+
+  /* ==============================
+   * カウントダウン
+   * ============================== */
+  .countdown {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40vh; font-weight: 900;
+    color: #ffeb3b;
+    text-shadow: 6px 6px 0 #000, 0 0 30px #ff4081;
+    z-index: 30; pointer-events: none;
+    animation: cdPop .8s ease-out;
+  }
+  @keyframes cdPop {
+    0%   { transform: scale(2.5); opacity: 0; }
+    30%  { transform: scale(1); opacity: 1; }
+    100% { transform: scale(.9); opacity: .8; }
+  }
+
+  /* ==============================
+   * リザルト画面
+   * ============================== */
+  #resultScreen {
+    background:
+      radial-gradient(ellipse at 50% 50%, #1a237e 0%, #000 100%);
+    overflow-y: auto;
+    justify-content: flex-start;
+    padding-top: 3vh;
+    padding-bottom: 4vh;
+  }
+  .result-title {
+    font-size: 9vh; font-weight: 900; color: #ffeb3b;
+    text-shadow: 4px 4px 0 #000, 8px 8px 0 #c62828;
+    letter-spacing: .25em;
+  }
+  .result-score {
+    font-size: 24vh; font-weight: 900;
+    color: #ff4081;
+    text-shadow: 6px 6px 0 #000, 0 0 40px #ff4081;
+    line-height: 1;
+    margin: 2vh 0 0;
+  }
+  .result-score-label { font-size: 4vh; color: #fff; letter-spacing: .3em; }
+  .result-analysis {
+    font-size: 3.5vh; max-width: 85vw;
+    background: rgba(255,255,255,.08);
+    border: 3px solid #00e5ff;
+    padding: 2vh 4vw;
+    margin: 3vh 0;
+    line-height: 1.7;
+    text-align: center;
+  }
+  .result-analysis b { color: #ffeb3b; }
+
+  /* 妨害者の活躍ランキング */
+  .sab-stats {
+    width: 90vw; max-width: 700px;
+    background: rgba(255,64,129,.15);
+    border: 3px solid #ff4081;
+    padding: 2vh 3vw;
+    margin: 2vh 0;
+    display: none;
+  }
+  .sab-stats.show { display: block; }
+  .sab-stats-title {
+    font-size: 4vh; color: #ff4081;
+    text-align: center;
+    letter-spacing: .15em;
+    margin-bottom: 1vh;
+    text-shadow: 2px 2px 0 #000;
+  }
+  .sab-stats-row {
+    display: flex; align-items: center; gap: 2vw;
+    padding: 1vh 2vw;
+    font-size: 3vh;
+    background: rgba(0,0,0,.3);
+    margin-bottom: .5vh;
+  }
+  .sab-stats-row.r1 { background: rgba(255,235,59,.3); color: #ffeb3b; }
+  .sab-stats-row .rank { width: 4vw; font-weight: 900; color: #ffeb3b; }
+  .sab-stats-row .name { flex: 1; font-weight: 900; }
+  .sab-stats-row .actions { font-size: 2.5vh; color: #ff80ab; }
+  .sab-stats-row .total { font-size: 4vh; color: #fff; font-weight: 900; }
+
+  /* 結果画面のハイスコアボード */
+  .hiscore-box {
+    width: 90vw; max-width: 700px;
+    background: rgba(255,235,59,.08);
+    border: 3px solid #ffeb3b;
+    padding: 2vh 3vw;
+    margin: 2vh 0;
+  }
+  .hiscore-title-r {
+    font-size: 4vh; color: #ffeb3b;
+    text-align: center;
+    letter-spacing: .2em;
+    margin-bottom: 1vh;
+    text-shadow: 2px 2px 0 #000;
+  }
+</style>
+</head>
+<body>
+<div class="crt"></div>
+<audio id="bgmTitle" src="title_bgm.m4a" loop preload="auto"></audio>
+<audio id="bgm" src="bgm.m4a" loop preload="auto"></audio>
+<audio id="bgmFever" src="fever.m4a" loop preload="auto"></audio>
+<div class="stage">
+
+  <!-- ========== タイトル画面 ========== -->
+  <div id="titleScreen" class="screen">
+    <div class="logo">バキューン<br>パニック</div>
+    <div class="desc">出てきたヤツを<br>タップしてたたこう!</div>
+    <div class="char-guide">
+      <span><span class="cdot" style="background:#4caf50"></span>+1</span>
+      <span><span class="cdot" style="background:#26c6da"></span>+2</span>
+      <span><span class="cdot" style="background:#ffeb3b"></span>+2</span>
+      <span><span class="cdot" style="background:#9c27b0"></span>+3</span>
+      <span><span class="cdot" style="background:#ff9800"></span>+5</span>
+    </div>
+    <div class="mode-selector">
+      <button class="mode-btn active" data-mode="normal">ふつう<br><small>30秒</small></button>
+      <button class="mode-btn" data-mode="stage">ステージ<br><small>3戦+ボス</small></button>
+      <button class="mode-btn" data-mode="coop">協力<br><small>目指せ100点</small></button>
+    </div>
+    <button class="btn" id="startBtn">START</button>
+    <div class="scroll-hint">↓ 下に妨害者用QRあり ↓</div>
+    <div class="sabotage-qr" id="sabotageQrBox">
+      <div class="sabotage-title">🕷 妨害プレイヤー募集</div>
+      <img id="sabotageQr" src="qr_sabotage.png">
+      <div class="sabotage-sub">観客もスマホでQRを読み込んで参加OK</div>
+    </div>
+  </div>
+
+  <!-- ========== ゲーム画面 ========== -->
+  <div id="gameScreen" class="screen hidden" style="padding:0;">
+    <div class="fever-overlay" id="feverOverlay"></div>
+    <div class="hud">
+      <div class="hud-box score">SCORE <span id="hudScore">0</span></div>
+      <div class="hud-box time" id="hudTimeBox">TIME <span id="hudTimer">30</span></div>
+    </div>
+    <div class="combo-display" id="comboDisplay"><span id="comboCount">0</span> COMBO <span class="mul" id="comboMul"></span></div>
+    <div class="mission-box" id="missionBox"></div>
+    <div class="coop-goal" id="coopGoalBar" style="display:none;">
+      <div class="coop-label">協力ゴール 0/100</div>
+      <div class="coop-track"><div class="coop-fill"></div></div>
+    </div>
+    <div class="holes" id="holes"></div>
+    <div class="fever-layer" id="feverLayer"></div>
+    <div class="ai-box" id="aiBox"><span id="aiText"></span></div>
+  </div>
+
+  <!-- ========== リザルト画面 ========== -->
+  <div id="resultScreen" class="screen hidden">
+    <div class="result-title">GAME OVER</div>
+    <div class="result-score" id="resultScore">0</div>
+    <div class="result-score-label">HIT!</div>
+    <div class="result-analysis" id="resultAnalysis"></div>
+    <div class="sab-stats" id="sabStats"></div>
+    <div class="hiscore-box" id="resultHiscoreBox">
+      <div class="hiscore-title-r">🏆 TOP 10</div>
+      <div class="hiscore-list" id="hiscoreListResult"></div>
+    </div>
+    <button class="btn" id="retryBtn">RETRY</button>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+ *  CONFIG: ここを触って難易度・AI感を調整する
+ * ===================================================================== */
+const CONFIG = {
+  // プレイ時間(秒)
+  GAME_TIME_S: 30,
+
+  // 穴の数 (3 x 2 = 6)
+  HOLE_COLS: 3,
+  HOLE_ROWS: 2,
+
+  // キャラが出ている時間 (ms) - 短すぎると「一瞬で消えた」になるので注意
+  MOLE_UP_MS_START: 1600,  // ゲーム開始時
+  MOLE_UP_MS_END:   1100,  // ゲーム終了時(徐々に速くなるが十分見える長さを確保)
+
+  // キャラ出現間隔 (ms)
+  SPAWN_INTERVAL_START_MS: 1100,
+  SPAWN_INTERVAL_END_MS:   600,
+
+  // 同時出現最大数
+  MAX_ACTIVE_MOLES: 3,
+
+  // レアキャラが消える直前の点滅警告時間(ms) - この時間だけ点滅して警告
+  RARE_WARNING_MS: 500,
+
+  // AI呼び出し間隔 (ms) — 2秒〜4秒が推奨
+  AI_CALL_INTERVAL_MS: 3000,
+
+  // AI補正の強さ (0=AI無視, 1=完全にAIの指示通り)
+  // 大きいほど「癖読まれてる」感が強くなる(理不尽にはならない)
+  AI_INFLUENCE: 0.6,
+
+  // AI重みの範囲 (API値がこれを超えたらクリップ)
+  WEIGHT_MIN: 0.5,
+  WEIGHT_MAX: 1.5,
+
+  // AI呼び出し最小経過時間 — 序盤はローカルで回す
+  AI_START_AFTER_MS: 4000,
+
+  // FEVER モード(終盤の盛り上がり)
+  FEVER_LAST_SECONDS: 10,         // ラストN秒でFEVER突入
+  FEVER_SPAWN_MUL: 1.7,           // 出現間隔短縮倍率
+  FEVER_SCORE_MUL: 2,             // 獲得スコア倍率
+
+  // コンボ倍率
+  COMBO_THRESHOLDS: [
+    { combo: 3,  mul: 1.5 },
+    { combo: 5,  mul: 2.0 },
+    { combo: 10, mul: 3.0 },
+  ],
+};
+
+/* =====================================================================
+ *  ピクセル絵スプライト(8x8)
+ *  文字は1ピクセル。パレットで色を決める。
+ * ===================================================================== */
+const SPRITES = {
+  slime: [
+    '.GGGGGG.',
+    'GGGGGGGG',
+    'GBGGGGBG',
+    'GBGGGGBG',
+    'GGGGGGGG',
+    'GGGGGGGG',
+    '.GGGGGG.',
+    '.G.GG.G.',
+  ],
+  ghost: [
+    '.WWWWWW.',
+    'WWWWWWWW',
+    'WBWWWWBW',
+    'WBWWWWBW',
+    'WWWWWWWW',
+    'WWWWWWWW',
+    'WWWWWWWW',
+    'W.W.W.W.',
+  ],
+  pumpkin: [
+    '..OOO...',
+    '.OOOOOO.',
+    'OOOOOOOO',
+    'OBOOOOBO',
+    'OBOOOOBO',
+    'OOMMMMOO',
+    'OOOOOOOO',
+    '.OOOOOO.',
+  ],
+  bat: [
+    'P.P..P.P',
+    'PPPPPPPP',
+    'PPPPPPPP',
+    'PBPPPPBP',
+    'PPPPPPPP',
+    'PPPPPPPP',
+    '.PPPPPP.',
+    '..P..P..',
+  ],
+  blob: [
+    '..CCCC..',
+    '.CCCCCC.',
+    'CCCCCCCC',
+    'CBCCCCBC',
+    'CCCCCCCC',
+    'CCCCCCCC',
+    '.CCCCCC.',
+    'C.C..C.C',
+  ],
+  chick: [
+    '..YYYY..',
+    '.YYYYYY.',
+    'YYYYYYYY',
+    'YBYYYYBY',
+    'YYYYYYYY',
+    'YYMMYYYY',
+    '.YYYYYY.',
+    '..R..R..',
+  ],
+  // 罠キャラ: 骸骨ドクロ + 血涙
+  // K=骨(オフホワイト), B=黒(目/口/牙), D=赤(血)
+  skull: [
+    '..KKKK..',
+    '.KKKKKK.',
+    'KKBKKBKK',
+    'KKBKKBKK',
+    'KKKBBKKK',
+    'KBKBBKBK',
+    '.KBKKBK.',
+    '.DK..KD.',
+  ],
+};
+
+const PALETTE = {
+  G: '#4caf50',  // 緑 slime
+  W: '#ffffff',  // 白 ghost
+  B: '#111111',  // 黒 eyes
+  O: '#ff9800',  // 橙 pumpkin
+  M: '#b71c1c',  // 暗赤 mouth
+  P: '#9c27b0',  // 紫 bat
+  C: '#26c6da',  // 水色 blob
+  Y: '#ffeb3b',  // 黄 chick
+  R: '#ef6c00',  // オレンジ ヒヨコの足
+  K: '#f5f5f5',  // 白骨 skull
+  D: '#d50000',  // 血 skull
+  '.': 'transparent',
+};
+
+/* =====================================================================
+ *  キャラ種別定義(色ごとの特徴)
+ *   points:    スコア増減
+ *   upMsMul:   出現時間倍率 (小さい=すぐ引っ込む=難)
+ *   weight:    出現比重
+ *   name:      演出用表示名
+ *   pColor:    スコアポップアップ色
+ * ===================================================================== */
+// upMsMul を 0.85〜1.5 の範囲に抑え、「最短でも見える」ようにチューニング
+const CHAR_TYPES = [
+  { key:'slime',   points:+1, upMsMul:1.0,  weight:60, name:'スライム',   pColor:'#4caf50' },
+  { key:'ghost',   points:+1, upMsMul:1.1,  weight:30, name:'ゴースト',   pColor:'#ffffff' },
+  { key:'blob',    points:+2, upMsMul:1.0,  weight:25, name:'水玉',       pColor:'#26c6da' },
+  { key:'chick',   points:+2, upMsMul:0.9,  weight:20, name:'ヒヨコ',     pColor:'#ffeb3b' },
+  { key:'bat',     points:+3, upMsMul:0.85, weight:10, name:'コウモリ',   pColor:'#b388ff' },
+  { key:'pumpkin', points:+5, upMsMul:1.3,  weight:4,  name:'パンプキン', pColor:'#ff9800' },
+  // ゴールデン: pumpkin スプライトを金色で再利用した超レアキャラ
+  { key:'golden',  points:+15, upMsMul:1.5, weight:1,  name:'ゴールデン', pColor:'#ffd700',
+    spriteKey:'pumpkin', paletteOverride:{ O:'#ffd700', M:'#8d6e00', B:'#4d3500' }, special:true },
+  // 罠キャラ: ワニの悪キャラ画像(trap.png)。weight:3で通常プレイでもたまに出る
+  { key:'bomb',    points:-3, upMsMul:1.1, weight:3,  name:'罠', pColor:'#ff5252',
+    customImage:'trap.png', sabotage:true },
+];
+
+function pickCharType(){
+  const total = CHAR_TYPES.reduce((a,c) => a + c.weight, 0);
+  let r = Math.random() * total;
+  for (const c of CHAR_TYPES){
+    r -= c.weight;
+    if (r <= 0) return c;
+  }
+  return CHAR_TYPES[0];
+}
+
+/* =====================================================================
+ *  状態
+ * ===================================================================== */
+const state = {
+  phase: 'title',     // 'title' | 'playing' | 'result'
+  score: 0,
+  combo: 0,
+  maxCombo: 0,
+  startT: 0,
+  holes: [],          // DOM refs
+  moles: [],          // {holeIdx, el, appearT, upMs, up, hit}
+  stats: [],          // per-hole: {appear, hit, miss, hitMsSum, hitMsN}
+  recentTargets: [],  // 最後にタップした穴index(hit/missどちらも)
+  aiWeights: [1,1,1,1,1,1],
+  aiReachable: true,  // APIが使えるか(フォールバックかどうか)
+  lastSpawnT: 0,
+  lastAiCallT: 0,
+  aiInFlight: false,
+  audio: null,
+};
+
+const POS_NAMES = ['左上','中上','右上','左下','中下','右下'];
+
+/* =====================================================================
+ *  ピクセル絵スプライト描画
+ * ===================================================================== */
+function makeSprite(key, paletteOverride, customImageSrc){
+  // カスタム画像(PNG)があればそちらを使う
+  if (customImageSrc){
+    const img = document.createElement('img');
+    img.src = customImageSrc;
+    img.draggable = false;
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 6px 8px rgba(0,0,0,.6));';
+    return img;
+  }
+  const grid = SPRITES[key] || SPRITES.slime;
+  const wrap = document.createElement('div');
+  wrap.className = 'sprite';
+  const pal = paletteOverride ? Object.assign({}, PALETTE, paletteOverride) : PALETTE;
+  for (const row of grid){
+    for (const ch of row){
+      const pix = document.createElement('span');
+      pix.style.background = pal[ch] || 'transparent';
+      wrap.appendChild(pix);
+    }
+  }
+  return wrap;
+}
+
+/* =====================================================================
+ *  穴の初期化
+ * ===================================================================== */
+function initHoles(){
+  const container = document.getElementById('holes');
+  container.innerHTML = '';
+  state.holes = [];
+  state.stats = [];
+  const N = CONFIG.HOLE_COLS * CONFIG.HOLE_ROWS;
+  for (let i=0; i<N; i++){
+    const hole = document.createElement('div');
+    hole.className = 'hole';
+    hole.dataset.idx = i;
+    const mole = document.createElement('div');
+    mole.className = 'mole';
+    hole.appendChild(mole);
+    hole.addEventListener('mousedown', onHoleTap);
+    hole.addEventListener('touchstart', onHoleTap, {passive:false});
+    container.appendChild(hole);
+    state.holes.push(hole);
+    state.stats.push({appear:0, hit:0, miss:0, hitMsSum:0, hitMsN:0});
+  }
+}
+
+/* =====================================================================
+ *  タップ処理
+ * ===================================================================== */
+function onHoleTap(ev){
+  ev.preventDefault();
+  if (state.phase !== 'playing') return;
+  const hole = ev.currentTarget;
+  const idx = parseInt(hole.dataset.idx);
+  state.recentTargets.push(idx);
+  if (state.recentTargets.length > 30) state.recentTargets.shift();
+
+  // その穴に出現中のキャラがいるか
+  const mole = state.moles.find(m => m.holeIdx === idx && m.up && !m.hit);
+  if (mole){
+    // 具体的な瞬間に合わせたコメント(プレイ内容と直結)
+    if (mole.charType){
+      const k = mole.charType.key;
+      if (k === 'golden')       showAIComment('💎 ゴールデン獲得!');
+      else if (k === 'pumpkin') showAIComment('🎃 パンプキン 5点!');
+      else if (k === 'bomb')    showAIComment('⚠️ 罠に引っかかった!');
+    }
+    const reactionMs = Date.now() - mole.appearT;
+    let pts = mole.charType ? mole.charType.points : 1;
+    mole.hit = true;
+    mole.up = false;
+    state.stats[idx].hit++;
+    state.stats[idx].hitMsSum += reactionMs;
+    state.stats[idx].hitMsN++;
+
+    // コンボ更新
+    if (pts > 0){
+      state.combo++;
+      if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+    } else {
+      state.combo = 0;
+    }
+    // コンボ倍率
+    const comboMul = getComboMultiplier(state.combo);
+    // FEVER倍率
+    const feverMul = state.isFever ? CONFIG.FEVER_SCORE_MUL : 1;
+    // 負の点にも倍率は効かせない(ペナルティは素直にマイナス)
+    if (pts > 0) pts = Math.round(pts * comboMul * feverMul);
+    state.score = Math.max(0, state.score + pts);
+
+    updateHud();
+    updateComboDisplay();
+    updateHoleVisuals();
+    updateMissionProgress(mole, false);
+    mole.el.classList.add('hit');
+    mole.el.classList.remove('warning');
+    const label = (pts >= 0 ? '+' : '') + pts;
+    showPopup(hole, label, mole.charType && mole.charType.pColor);
+    if (mole.charType && mole.charType.key === 'bomb') sfxBombHit();
+    else sfxHit();
+    // 画面揺れ・振動(高得点ほど強く)
+    shakeScreen(pts >= 5 || pts < 0);
+    setTimeout(() => {
+      if (mole.el){
+        mole.el.classList.remove('hit');
+        mole.el.classList.remove('up');
+        mole.el.innerHTML = '';
+      }
+    }, 400);
+  } else {
+    // ミス(空振り)
+    state.combo = 0;
+    updateComboDisplay();
+    updateMissionProgress(null, true);
+    hole.classList.remove('miss'); void hole.offsetWidth;
+    hole.classList.add('miss');
+    sfxMiss();
+    setTimeout(() => hole.classList.remove('miss'), 240);
+  }
+}
+
+function getComboMultiplier(combo){
+  let mul = 1.0;
+  for (const t of CONFIG.COMBO_THRESHOLDS){
+    if (combo >= t.combo) mul = t.mul;
+  }
+  return mul;
+}
+
+function updateComboDisplay(){
+  const el = document.getElementById('comboDisplay');
+  const mul = getComboMultiplier(state.combo);
+  if (state.combo >= 2){
+    document.getElementById('comboCount').textContent = state.combo;
+    document.getElementById('comboMul').textContent = mul > 1 ? ('x' + mul) : '';
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  } else {
+    el.classList.remove('show');
+  }
+}
+
+// α: 穴の使用状況を反映
+//   ヒット多い=得意 → 縮んで負荷UP(lv2,lv3と段階的に)
+//   ミス多い=苦手 → 少し広がって救済
+function updateHoleVisuals(){
+  for (let i = 0; i < state.stats.length; i++){
+    const s = state.stats[i];
+    const hole = state.holes[i];
+    if (!hole) continue;
+    hole.classList.remove('hot','cold','lv2','lv3');
+    const hitMissDiff = s.hit - s.miss;
+    if (s.hit >= 3 && hitMissDiff >= 2) {
+      hole.classList.add('hot');
+      if (s.hit >= 8)  hole.classList.add('lv2');
+      if (s.hit >= 14) hole.classList.add('lv3');
+    } else if (s.miss >= 3 && s.miss > s.hit) {
+      hole.classList.add('cold');
+    }
+  }
+}
+
+// スパークル粒子をヒット位置から散らす
+function spawnSparkles(hole, n){
+  const rect = hole.getBoundingClientRect();
+  const cx = rect.left + rect.width/2;
+  const cy = rect.top + rect.height/2;
+  for (let i=0; i<n; i++){
+    const s = document.createElement('div');
+    s.className = 'sparkle';
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 40 + Math.random() * 90;
+    s.style.setProperty('--dx', Math.cos(angle)*dist + 'px');
+    s.style.setProperty('--dy', Math.sin(angle)*dist + 'px');
+    s.style.left = cx + 'px';
+    s.style.top  = cy + 'px';
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 700);
+  }
+}
+
+function showBanner(text, color){
+  const stage = document.querySelector('.stage');
+  const el = document.createElement('div');
+  el.className = 'golden-banner';
+  el.textContent = text;
+  if (color) el.style.color = color;
+  stage.appendChild(el);
+  setTimeout(() => el.remove(), 1200);
+}
+
+/* レアを逃した時の残念演出 */
+function showRegret(charType){
+  const stage = document.querySelector('.stage');
+  const flash = document.createElement('div');
+  flash.className = 'miss-rare-flash';
+  stage.appendChild(flash);
+  const text = document.createElement('div');
+  text.className = 'miss-rare-text';
+  text.textContent = 'あぁ…' + (charType.name || '');
+  stage.appendChild(text);
+  sfxRegret();
+  setTimeout(() => { flash.remove(); text.remove(); }, 1000);
+}
+
+/* 画面揺れ(ヒット時の手応え) */
+function shakeScreen(strong){
+  const stage = document.querySelector('.stage');
+  stage.classList.remove('shake'); void stage.offsetWidth;
+  stage.classList.add('shake');
+  setTimeout(() => stage.classList.remove('shake'), 160);
+  if (strong && navigator.vibrate) {
+    try { navigator.vibrate(30); } catch(e){}
+  } else if (navigator.vibrate) {
+    try { navigator.vibrate(12); } catch(e){}
+  }
+}
+
+function showPopup(hole, text, color){
+  const rect = hole.getBoundingClientRect();
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  popup.textContent = text;
+  popup.style.left = (rect.left + rect.width/2) + 'px';
+  popup.style.top  = (rect.top  + rect.height/2) + 'px';
+  if (color) popup.style.color = color;
+  document.body.appendChild(popup);
+  setTimeout(() => popup.remove(), 800);
+}
+
+/* =====================================================================
+ *  出現ロジック
+ *  baseWeight(ローカル) × AI補正 で重み決定 → 加重ランダム
+ * ===================================================================== */
+function spawnMole(){
+  const N = state.holes.length;
+  const active = state.moles.filter(m => m.up && !m.hit);
+  if (active.length >= CONFIG.MAX_ACTIVE_MOLES) return;
+  const busy = new Set(active.map(m => m.holeIdx));
+
+  // ベース重み: 凍結穴は出現させない
+  const weights = [];
+  for (let i=0; i<N; i++){
+    if (busy.has(i)){ weights.push(0); continue; }
+    if (state.frozenHoles[i] && Date.now() < state.frozenHoles[i]){ weights.push(0); continue; }
+    const baseW = 1.0;
+    const aiW = state.aiWeights[i] || 1.0;
+    const blended = baseW * (1 - CONFIG.AI_INFLUENCE) + aiW * CONFIG.AI_INFLUENCE;
+    weights.push(Math.max(0.1, blended));
+  }
+  const idx = weightedPick(weights);
+  if (idx < 0) return;
+  _spawnAt(idx);
+}
+
+function _spawnAt(idx, forcedCharType){
+  const progress = Math.min(1, (Date.now() - state.startT) / (CONFIG.GAME_TIME_S * 1000));
+  const baseUpMs = CONFIG.MOLE_UP_MS_START - (CONFIG.MOLE_UP_MS_START - CONFIG.MOLE_UP_MS_END) * progress;
+  let charType = forcedCharType || pickCharType();
+  // 爆弾(罠)は通常キャラに擬態(見分けられない=本当の妨害)
+  if (charType && charType.disguise){
+    const normals = CHAR_TYPES.filter(c => !c.sabotage && !c.special && c.weight > 0);
+    const disguise = normals[Math.floor(Math.random() * normals.length)];
+    charType = Object.assign({}, charType, {
+      spriteKey: disguise.key,
+      paletteOverride: disguise.paletteOverride || undefined,
+    });
+  }
+  // 下限は 800ms (見てから叩ける最低時間)
+  let upMs = Math.max(800, baseUpMs * charType.upMsMul);
+  // 高速化モード(妨害)中は出現時間短縮
+  if (state.fastSpeedUntil && Date.now() < state.fastSpeedUntil){
+    upMs = Math.max(450, upMs * 0.5);
+  }
+  const hole = state.holes[idx];
+  const moleEl = hole.querySelector('.mole');
+  moleEl.innerHTML = '';
+  const spriteKey = charType.spriteKey || charType.key;
+  moleEl.appendChild(makeSprite(spriteKey, charType.paletteOverride, charType.customImage));
+  moleEl.classList.remove('hit','golden');
+  if (charType.special) moleEl.classList.add('golden');
+  void moleEl.offsetWidth;
+  moleEl.classList.add('up');
+  state.stats[idx].appear++;
+  state.moles.push({holeIdx:idx, el:moleEl, appearT:Date.now(), upMs, up:true, hit:false, charType});
+  sfxAppear();
+  if (charType.special){
+    sfxGolden();
+    showBanner('✨ ゴールデン! ✨', '#ffd700');
+    speak('ゴールデン!');
+  }
+}
+
+// 画面全体のランダム位置にキャラ出現
+function spawnFeverCharacter(forcedCharType){
+  const layer = document.getElementById('feverLayer');
+  if (!layer) return;
+  let charType = forcedCharType || pickCharType();
+  // 正規化座標(妨害者ミラー用)
+  const nx = (8 + Math.random() * 84) / 100;
+  const ny = (10 + Math.random() * 75) / 100;
+  const el = document.createElement('div');
+  el.className = 'fever-mole' + (charType.sabotage ? ' trap' : '');
+  el.style.left = (nx * 100) + '%';
+  el.style.top  = (ny * 100) + '%';
+  const spriteKey = charType.spriteKey || charType.key;
+  el.appendChild(makeSprite(spriteKey, charType.paletteOverride, charType.customImage));
+  if (charType.special) el.style.filter = 'drop-shadow(0 0 15px #ffd700)';
+
+  const appearT = Date.now();
+  const progress = Math.min(1, (appearT - state.startT) / ((state._roundDurationS||30) * 1000));
+  const baseUpMs = CONFIG.MOLE_UP_MS_START - (CONFIG.MOLE_UP_MS_START - CONFIG.MOLE_UP_MS_END) * progress;
+  let upMs = Math.max(600, baseUpMs * charType.upMsMul);
+  if (state.fastSpeedUntil && Date.now() < state.fastSpeedUntil){
+    upMs = Math.max(350, upMs * 0.5);
+  }
+  const mole = { holeIdx: -1, el, appearT, upMs, up: true, hit: false, charType, isFever: true, _nx:nx, _ny:ny, id: ++state._moleIdSeq };
+  state.moles.push(mole);
+
+  const onTap = (ev) => {
+    ev.preventDefault();
+    if (state.phase !== 'playing' || !mole.up || mole.hit) return;
+    let pts = charType ? charType.points : 1;
+    mole.hit = true; mole.up = false;
+    if (pts > 0){
+      state.combo++;
+      if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+    } else {
+      state.combo = 0;
+    }
+    const comboMul = getComboMultiplier(state.combo);
+    const feverMul = state.isFever ? CONFIG.FEVER_SCORE_MUL : 1;
+    if (pts > 0) pts = Math.round(pts * comboMul * feverMul);
+    state.score = Math.max(0, state.score + pts);
+    updateHud();
+    updateComboDisplay();
+    el.classList.add('hit');
+    // popup at mole position
+    const rect = el.getBoundingClientRect();
+    const fakeHole = { getBoundingClientRect: () => rect };
+    const label = (pts >= 0 ? '+' : '') + pts;
+    showPopup(fakeHole, label, charType && charType.pColor);
+    if (charType && charType.key === 'bomb') sfxBombHit(); else sfxHit();
+    shakeScreen(pts >= 5 || pts < 0);
+    setTimeout(() => el.remove(), 380);
+  };
+  el.addEventListener('touchstart', onTap, {passive:false});
+  el.addEventListener('mousedown', onTap);
+  layer.appendChild(el);
+  sfxAppear();
+
+  // auto-expire
+  setTimeout(() => {
+    if (!mole.up || mole.hit) return;
+    mole.up = false;
+    el.style.transition = 'opacity .3s, transform .3s';
+    el.style.opacity = '0';
+    el.style.transform = 'translate(-50%, -30%) scale(.6)';
+    setTimeout(() => el.remove(), 300);
+  }, upMs);
+}
+
+function weightedPick(weights){
+  const total = weights.reduce((a,b)=>a+b, 0);
+  if (total <= 0) return -1;
+  let r = Math.random() * total;
+  for (let i=0; i<weights.length; i++){
+    r -= weights[i];
+    if (r <= 0) return i;
+  }
+  return weights.length - 1;
+}
+
+/* =====================================================================
+ *  ゲームループ
+ * ===================================================================== */
+function gameLoop(){
+  if (state.phase !== 'playing') return;
+  const now = Date.now();
+  const elapsed = now - state.startT;
+  const roundDurationS = state._roundDurationS || CONFIG.GAME_TIME_S;
+  const remainMs = roundDurationS * 1000 - elapsed;
+  const remainS = Math.max(0, Math.ceil(remainMs/1000));
+  if (state.mode === 'coop') updateCoopGoal();
+
+  document.getElementById('hudTimer').textContent = remainS;
+  document.getElementById('hudTimeBox').classList.toggle('warn', remainS <= 5);
+
+  // FEVER モードの開始検出(ラウンド最後の10秒。ステージ1,2では無効化してもよいが単純のため共通)
+  const fever = remainS > 0 && remainS <= CONFIG.FEVER_LAST_SECONDS && roundDurationS >= 20;
+  if (fever && !state.isFever){
+    state.isFever = true;
+    document.getElementById('feverOverlay').classList.add('show');
+    document.getElementById('feverLayer').classList.add('fever-active');
+    const feverBanner = document.createElement('div');
+    feverBanner.className = 'fever-banner';
+    feverBanner.textContent = 'FEVER!';
+    document.querySelector('.stage').appendChild(feverBanner);
+    setTimeout(() => feverBanner.remove(), 1500);
+    sfxFever();
+    speak('フィーバー!');
+    switchToFeverBgm();
+  }
+
+  // 出現チェック: 常に画面全体からスポーン
+  const progress = Math.min(1, elapsed / (roundDurationS * 1000));
+  let interval = CONFIG.SPAWN_INTERVAL_START_MS - (CONFIG.SPAWN_INTERVAL_START_MS - CONFIG.SPAWN_INTERVAL_END_MS) * progress;
+  if (state.isFever) interval = Math.max(180, interval / (CONFIG.FEVER_SPAWN_MUL * 1.8));
+  if (now - state.lastSpawnT > interval){
+    state.lastSpawnT = now;
+    spawnFeverCharacter();
+  }
+
+  // レアキャラ消失警告(消える直前に点滅)
+  for (const mole of state.moles){
+    if (!mole.up || mole.hit) continue;
+    const remainMs = mole.upMs - (now - mole.appearT);
+    const isRare = mole.charType && (mole.charType.key === 'pumpkin' || mole.charType.special);
+    if (isRare && remainMs > 0 && remainMs <= CONFIG.RARE_WARNING_MS){
+      if (!mole.warning){
+        mole.warning = true;
+        mole.el.classList.add('warning');
+      }
+    }
+  }
+
+  // キャラ引っ込め(ミス)
+  let anyMissed = false;
+  let rareMissed = null;
+  for (const mole of state.moles){
+    if (mole.up && !mole.hit && now - mole.appearT >= mole.upMs){
+      mole.up = false;
+      mole.el.classList.remove('up','warning');
+      mole.el.innerHTML = '';
+      state.stats[mole.holeIdx].miss++;
+      anyMissed = true;
+      // レアを逃した = 残念演出
+      if (mole.charType && (mole.charType.key === 'pumpkin' || mole.charType.special)){
+        rareMissed = mole.charType;
+      }
+    }
+  }
+  if (anyMissed) updateHoleVisuals();
+  if (rareMissed) showRegret(rareMissed);
+  state.moles = state.moles.filter(m => (now - m.appearT) < 2500);
+
+  // AI定期呼び出し
+  if (elapsed > CONFIG.AI_START_AFTER_MS &&
+      now - state.lastAiCallT > CONFIG.AI_CALL_INTERVAL_MS &&
+      !state.aiInFlight){
+    state.lastAiCallT = now;
+    triggerAI();
+  }
+
+  if (remainMs <= 0){
+    state.phase = 'between';
+    if (state._onRoundEnd){
+      const cb = state._onRoundEnd; state._onRoundEnd = null;
+      cb();
+    }
+    return;
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+/* =====================================================================
+ *  AI呼び出し (Gemini経由 → プロキシ /api/ai)
+ *  失敗時はローカルフォールバックロジック
+ * ===================================================================== */
+function buildLog(){
+  const elapsed = Math.round((Date.now() - state.startT) / 100) / 10;
+  const hits = {}, misses = {}, avgReactionMs = {};
+  for (let i=0; i<state.stats.length; i++){
+    const s = state.stats[i];
+    hits[i] = s.hit;
+    misses[i] = s.miss;
+    avgReactionMs[i] = s.hitMsN > 0 ? Math.round(s.hitMsSum / s.hitMsN) : 0;
+  }
+  return {
+    elapsed,
+    hits, misses, avgReactionMs,
+    recentTargets: state.recentTargets.slice(-20),
+  };
+}
+
+async function triggerAI(){
+  state.aiInFlight = true;
+  const log = buildLog();
+  let data = null;
+  try {
+    const res = await fetch('/api/ai', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({mode:'live', log}),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined,
+    });
+    if (res.ok) data = await res.json();
+  } catch (e) { /* silent */ }
+  if (!data || !data.weights){
+    // フォールバック: ローカルルール
+    data = fallbackAdvise(log);
+    state.aiReachable = false;
+  } else {
+    state.aiReachable = true;
+  }
+  applyAdvise(data);
+  state.aiInFlight = false;
+}
+
+function applyAdvise(data){
+  // weights を正規化してstateへ
+  if (data.weights){
+    const N = state.aiWeights.length;
+    for (let i=0; i<N; i++){
+      let w = parseFloat(data.weights[i]);
+      if (!isFinite(w)) w = 1.0;
+      w = Math.max(CONFIG.WEIGHT_MIN, Math.min(CONFIG.WEIGHT_MAX, w));
+      state.aiWeights[i] = w;
+    }
+  }
+  if (data.comment) showAIComment(data.comment);
+}
+
+/* フォールバック: ローカルだけで動かすロジック(APIが落ちても継続) */
+function fallbackAdvise(log){
+  const weights = {};
+  const N = CONFIG.HOLE_COLS * CONFIG.HOLE_ROWS;
+  for (let i=0; i<N; i++){
+    const h = log.hits[i] || 0;
+    const m = log.misses[i] || 0;
+    const r = log.avgReactionMs[i] || 600;
+    const total = h + m;
+    let w = 1.0;
+    if (total >= 2){
+      const hitRate = h / total;
+      // 苦手(低hitRate) → 少し重み上げ / 得意(高hitRate) → 少し下げ
+      w *= 0.8 + (1 - hitRate) * 0.5;
+      // 反応遅い → 少し上げ
+      w *= 0.9 + Math.min(0.4, Math.max(0, (r - 500) / 1000));
+    }
+    weights[i] = Math.max(CONFIG.WEIGHT_MIN, Math.min(CONFIG.WEIGHT_MAX, w));
+  }
+  // 最も狙われてる穴を検出
+  const counts = new Array(N).fill(0);
+  for (const t of (log.recentTargets||[])) counts[t]++;
+  const topIdx = counts.indexOf(Math.max(...counts));
+  const comments = [
+    `${POS_NAMES[topIdx]||'そこ'}ばかり`,
+    `読めてきた`,
+    `少し裏を突く`,
+    `${POS_NAMES[topIdx]||'そこ'}好きだね`,
+  ];
+  return {
+    weights,
+    comment: comments[Math.floor(Math.random()*comments.length)],
+    summary: '',
+  };
+}
+
+function showAIComment(text){
+  if (!text) return;
+  const el = document.getElementById('aiBox');
+  const t  = document.getElementById('aiText');
+  t.textContent = String(text).slice(0, 24);
+  el.classList.add('show');
+  clearTimeout(showAIComment._t);
+  showAIComment._t = setTimeout(() => el.classList.remove('show'), 3200);
+  // 音声は大事なイベント(FEVER/ゴールデン/結果)だけに限定したので、ここでは喋らない
+}
+
+/* =====================================================================
+ *  HUD
+ * ===================================================================== */
+function updateHud(){
+  document.getElementById('hudScore').textContent = state.score;
+  updateCoopGoal();
+}
+
+/* =====================================================================
+ *  ゲーム開始/終了
+ * ===================================================================== */
+// ステージごとの設定(G: ステージモード用)
+const STAGE_CONFIGS = {
+  1: { label:'ステージ 1 / 3', durationS: 15, spawnMul: 1.0,  charBias: null },
+  2: { label:'ステージ 2 / 3', durationS: 15, spawnMul: 1.3,  charBias: 'normal' },
+  3: { label:'ボスステージ',   durationS: 20, spawnMul: 1.5,  charBias: 'rare' },  // レア出現多め
+};
+
+async function startGame(){
+  document.getElementById('titleScreen').classList.add('hidden');
+  ensureAudio();
+  initTTS();
+
+  state.phase = 'preparing';
+  state.score = 0; state.combo = 0; state.maxCombo = 0;
+  state.isFever = false;
+  state.mission = null;
+  document.getElementById('missionBox').classList.remove('show');
+  document.getElementById('feverOverlay').classList.remove('show');
+  document.getElementById('feverLayer').classList.remove('fever-active');
+  // 既存のfever-moleを全部掃除
+  document.getElementById('feverLayer').innerHTML = '';
+  document.getElementById('comboDisplay').classList.remove('show');
+  state.moles = []; state.recentTargets = [];
+  state.aiWeights = [1,1,1,1,1,1];
+  state.aiInFlight = false;
+  state.lastSpawnT = 0; state.lastAiCallT = 0;
+  initHoles();
+  updateHud();
+  document.getElementById('resultScreen').classList.add('hidden');
+  document.getElementById('gameScreen').classList.remove('hidden');
+  document.getElementById('aiBox').classList.remove('show');
+
+  // 妨害ポーリング準備
+  state.frozenHoles = {};
+  state.fastSpeedUntil = 0;
+  // 妨害者の集計+キューをリセット
+  try { await fetch('/api/sabotage-reset', {method:'POST'}); } catch(e){}
+  // サーバーの現在seqを基準にして、それ以降のイベントだけ処理する
+  try {
+    const r = await fetch('/api/sabotage-events?since=999999');
+    const d = await r.json();
+    state.lastSabSeq = d.lastSeq || 0;
+  } catch(e){ state.lastSabSeq = 0; }
+  startSabotagePolling();
+  // BGM: タイトル停止 → ゲームBGM再生
+  stopTitleBgm();
+  playBgm();
+
+  // モードごとの分岐
+  if (state.mode === 'stage'){
+    await runStageMode();
+  } else if (state.mode === 'coop'){
+    await runCoopMode();
+  } else {
+    await runNormalMode();
+  }
+  stopSabotagePolling();
+  endGame();
+}
+
+// モード別設定を現在のCONFIGにオーバーライドし、復元用も返す
+function overrideConfig(overrides){
+  const saved = {};
+  for (const k in overrides){ saved[k] = CONFIG[k]; CONFIG[k] = overrides[k]; }
+  return () => { for (const k in saved) CONFIG[k] = saved[k]; };
+}
+
+// 1ラウンドを実行する(countdown → playing → time up)
+function runOneRound(durationS){
+  return new Promise(async (resolve) => {
+    document.getElementById('hudTimer').textContent = durationS;
+    state.isFever = false;
+    document.getElementById('feverOverlay').classList.remove('show');
+    state.moles = [];
+    state.lastSpawnT = 0;
+    await countdown(3);
+    state.phase = 'playing';
+    state.startT = Date.now();
+    state._roundDurationS = durationS;
+    state._onRoundEnd = resolve;
+    sfxStart();
+    requestAnimationFrame(gameLoop);
+  });
+}
+
+async function runNormalMode(){
+  await runOneRound(CONFIG.GAME_TIME_S);
+}
+
+async function runStageMode(){
+  for (let s=1; s<=3; s++){
+    const cfg = STAGE_CONFIGS[s];
+    await showStageBanner(cfg.label);
+    const restore = overrideConfig({
+      SPAWN_INTERVAL_START_MS: Math.round(CONFIG.SPAWN_INTERVAL_START_MS / cfg.spawnMul),
+      SPAWN_INTERVAL_END_MS:   Math.round(CONFIG.SPAWN_INTERVAL_END_MS   / cfg.spawnMul),
+      GAME_TIME_S: cfg.durationS,
+    });
+    // ボスステージはレア出現率UP
+    const savedWeights = CHAR_TYPES.map(c => c.weight);
+    if (cfg.charBias === 'rare'){
+      CHAR_TYPES.forEach(c => {
+        if (c.key === 'pumpkin') c.weight = 15;
+        if (c.key === 'golden')  c.weight = 5;
+        if (c.key === 'bat')     c.weight = 20;
+      });
+    }
+    await runOneRound(cfg.durationS);
+    restore();
+    CHAR_TYPES.forEach((c,i) => c.weight = savedWeights[i]);
+  }
+}
+
+async function runCoopMode(){
+  // 60秒 + 100点ゴール表示
+  const restore = overrideConfig({ GAME_TIME_S: 60 });
+  state.coopGoal = 100;
+  updateCoopGoal();
+  await runOneRound(60);
+  restore();
+  state.coopGoal = 0;
+}
+
+function showStageBanner(label){
+  return new Promise(resolve => {
+    const el = document.createElement('div');
+    el.className = 'golden-banner';
+    el.textContent = label;
+    el.style.color = '#00e5ff';
+    document.querySelector('.stage').appendChild(el);
+    sfxStart();
+    setTimeout(() => { el.remove(); resolve(); }, 1200);
+  });
+}
+
+function updateCoopGoal(){
+  const el = document.getElementById('coopGoalBar');
+  if (!el) return;
+  if (state.mode !== 'coop'){ el.style.display='none'; return; }
+  el.style.display = 'block';
+  const pct = Math.min(100, (state.score / state.coopGoal) * 100);
+  el.querySelector('.coop-fill').style.width = pct + '%';
+  el.querySelector('.coop-label').textContent = `協力ゴール ${state.score} / ${state.coopGoal}`;
+}
+
+async function countdown(n){
+  const stage = document.querySelector('.stage');
+  for (let i=n; i>0; i--){
+    const el = document.createElement('div');
+    el.className = 'countdown';
+    el.textContent = i;
+    stage.appendChild(el);
+    sfxCount();
+    await new Promise(r => setTimeout(r, 700));
+    el.remove();
+  }
+  const go = document.createElement('div');
+  go.className = 'countdown';
+  go.textContent = 'GO!';
+  go.style.color = '#ff4081';
+  stage.appendChild(go);
+  await new Promise(r => setTimeout(r, 500));
+  go.remove();
+}
+
+async function endGame(){
+  state.phase = 'result';
+  stopBgm();
+  sfxEnd();
+  document.getElementById('gameScreen').classList.add('hidden');
+  document.getElementById('resultScreen').classList.remove('hidden');
+  document.getElementById('resultScore').textContent = state.score;
+  // モード別の見出し
+  const resultTitle = document.querySelector('.result-title');
+  if (state.mode === 'coop'){
+    const success = state.score >= (state.coopGoal || 100);
+    resultTitle.textContent = success ? '🎉 CLEAR!' : 'FAILED';
+    resultTitle.style.color = success ? '#4caf50' : '#ff5252';
+  } else if (state.mode === 'stage'){
+    resultTitle.textContent = 'STAGE ALL CLEAR';
+    resultTitle.style.color = '#ffeb3b';
+  } else {
+    resultTitle.textContent = 'GAME OVER';
+    resultTitle.style.color = '#ffeb3b';
+  }
+  document.getElementById('resultAnalysis').innerHTML = buildLocalAnalysis();
+  // 妨害者の活躍
+  try {
+    const res = await fetch('/api/sabotage-stats');
+    const data = await res.json();
+    renderSabotageStats(data.stats || []);
+  } catch(e){}
+  // ハイスコアボード(結果画面側)
+  renderHiScores('hiscoreListResult');
+  // ハイスコア登録
+  if (state.score > 0 && qualifiesForHiScore(state.score)){
+    setTimeout(() => {
+      const name = (window.prompt('🏆 TOP 10入り!\n名前を入力(最大10文字)', '') || '').trim();
+      if (name){
+        addHiScore(name, state.score, state.mode);
+      }
+    }, 600);
+  }
+  // 最終AI分析を取得(可能なら)
+  try {
+    const log = buildLog();
+    const res = await fetch('/api/ai', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({mode:'final', log, score: state.score, maxCombo: state.maxCombo}),
+    });
+    if (res.ok){
+      const data = await res.json();
+      if (data && data.summary){
+        document.getElementById('resultAnalysis').innerHTML =
+          buildLocalAnalysis() + `<br><b>🤖 AI分析:</b> ${escapeHtml(data.summary)}`;
+        // 結果分析も読み上げ
+        speak(data.summary);
+      }
+    }
+  } catch(e){}
+}
+
+function buildLocalAnalysis(){
+  const N = state.stats.length;
+  let mostHitIdx = 0, maxHit = -1;
+  let mostMissIdx = 0, maxMiss = -1;
+  let slowIdx = -1, slowAvg = 0;
+  for (let i=0; i<N; i++){
+    const s = state.stats[i];
+    if (s.hit > maxHit){ maxHit = s.hit; mostHitIdx = i; }
+    if (s.miss > maxMiss){ maxMiss = s.miss; mostMissIdx = i; }
+    if (s.hitMsN > 0){
+      const avg = s.hitMsSum / s.hitMsN;
+      if (avg > slowAvg){ slowAvg = avg; slowIdx = i; }
+    }
+  }
+  const lines = [];
+  lines.push(`💥 最大コンボ: <b>${state.maxCombo}</b>`);
+  if (maxHit >= 3)  lines.push(`🎯 得意: <b>${POS_NAMES[mostHitIdx]}</b> (${maxHit}匹)`);
+  if (maxMiss >= 2) lines.push(`🕳 逃し: <b>${POS_NAMES[mostMissIdx]}</b> (${maxMiss}回)`);
+  if (slowIdx >= 0 && slowAvg > 800)
+    lines.push(`🐢 反応遅め: <b>${POS_NAMES[slowIdx]}</b> (${Math.round(slowAvg)}ms)`);
+  if (state.score >= 25)       lines.push('🏆 S級プレイヤー!');
+  else if (state.score >= 15)  lines.push('👏 なかなかやる!');
+  else if (state.score >= 8)   lines.push('🙂 いい感じ!');
+  else                         lines.push('😊 のんびり派?');
+  if (!state.aiReachable) lines.push('<span style="color:#ff9800;font-size:2.2vh;">※ AI接続なし</span>');
+  return lines.join('<br>');
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+/* =====================================================================
+ *  音声読み上げ (Web Speech API)
+ *  AIコメントを日本語TTSで読み上げる。iOS Safari 対応。
+ * ===================================================================== */
+let _ttsReady = false;
+let _jaVoice = null;
+
+function initTTS(){
+  if (!('speechSynthesis' in window)) return;
+  // iOS Safari: voices list is async
+  const setVoice = () => {
+    const voices = speechSynthesis.getVoices() || [];
+    // 日本語の女声を優先
+    const jaVoices = voices.filter(v => (v.lang||'').toLowerCase().startsWith('ja'));
+    // 優先度: "Kyoko" > "Kyoko (Enhanced)" > 名前に女性系キーワード > 最初の日本語
+    const prefer = ['kyoko', 'o-ren', 'sayaka', 'female', 'google 日本語', 'hiromi'];
+    for (const p of prefer){
+      const hit = jaVoices.find(v => v.name.toLowerCase().includes(p));
+      if (hit) { _jaVoice = hit; return; }
+    }
+    _jaVoice = jaVoices[0] || null;
+  };
+  setVoice();
+  speechSynthesis.onvoiceschanged = setVoice;
+  // iOS: ユーザー操作直後に空のutteranceを喋るとアンロックされる
+  try {
+    const u = new SpeechSynthesisUtterance('');
+    u.volume = 0;
+    speechSynthesis.speak(u);
+  } catch(e) {}
+  _ttsReady = true;
+}
+
+// 音声パラメータ(大事な瞬間だけ喋る方針)
+const VOICE_CONFIG = {
+  rate: 1.0,      // 普通速度
+  pitch: 1.3,     // やや高め(可愛いけど聞き取りやすい)
+  volume: 1.0,
+};
+
+function speak(text){
+  if (!_ttsReady || !('speechSynthesis' in window)) return;
+  if (!text) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.lang = 'ja-JP';
+    if (_jaVoice) u.voice = _jaVoice;
+    u.rate   = VOICE_CONFIG.rate;
+    u.pitch  = VOICE_CONFIG.pitch;
+    u.volume = VOICE_CONFIG.volume;
+    speechSynthesis.speak(u);
+  } catch(e) {}
+}
+
+/* =====================================================================
+ *  BGM (Too_Fast_For_Tokens)
+ *  ゲームスタートと同時に再生、エンド時にフェードアウト
+ * ===================================================================== */
+const BGM_VOLUME = 0.55;  // 0.0〜1.0
+
+function playBgm(){
+  const el = document.getElementById('bgm');
+  if (!el) return;
+  try {
+    el.volume = BGM_VOLUME;
+    el.currentTime = 0;
+    const p = el.play();
+    if (p && p.catch) p.catch(e => console.log('bgm play blocked', e));
+  } catch(e){ console.log('bgm err', e); }
+}
+function stopBgm(){
+  fadeAndPause(document.getElementById('bgm'), BGM_VOLUME);
+  fadeAndPause(document.getElementById('bgmFever'), BGM_VOLUME);
+}
+function playTitleBgm(){
+  const el = document.getElementById('bgmTitle');
+  if (!el) return;
+  try {
+    el.volume = BGM_VOLUME;
+    const p = el.play();
+    if (p && p.catch) p.catch(e => console.log('title bgm blocked', e));
+  } catch(e){}
+}
+function stopTitleBgm(){
+  fadeAndPause(document.getElementById('bgmTitle'), BGM_VOLUME);
+}
+function fadeAndPause(el, baseVol){
+  if (!el) return;
+  const startVol = el.volume;
+  const steps = 20;
+  let i = 0;
+  const iv = setInterval(() => {
+    i++;
+    el.volume = Math.max(0, startVol * (1 - i/steps));
+    if (i >= steps){ clearInterval(iv); el.pause(); el.volume = baseVol; }
+  }, 50);
+}
+function switchToFeverBgm(){
+  const normal = document.getElementById('bgm');
+  const fever  = document.getElementById('bgmFever');
+  if (normal) fadeAndPause(normal, BGM_VOLUME);
+  if (fever) {
+    try {
+      fever.volume = BGM_VOLUME;
+      fever.currentTime = 0;
+      const p = fever.play();
+      if (p && p.catch) p.catch(e => console.log('fever bgm blocked', e));
+    } catch(e){}
+  }
+}
+
+/* =====================================================================
+ *  効果音 (Web Audio API、軽量)
+ * ===================================================================== */
+function ensureAudio(){
+  if (state.audio) return;
+  try { state.audio = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){}
+}
+function beep(freq, dur, vol, type){
+  if (!state.audio) return;
+  const o = state.audio.createOscillator();
+  const g = state.audio.createGain();
+  o.type = type || 'square';
+  o.frequency.setValueAtTime(freq, state.audio.currentTime);
+  g.gain.setValueAtTime(vol || 0.2, state.audio.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, state.audio.currentTime + dur);
+  o.connect(g); g.connect(state.audio.destination);
+  o.start(); o.stop(state.audio.currentTime + dur);
+}
+function sfxHit(){ beep(880, 0.08, 0.3, 'square'); setTimeout(() => beep(1320, 0.06, 0.25, 'square'), 30); }
+function sfxMiss(){ beep(170, 0.15, 0.2, 'sawtooth'); }
+function sfxAppear(){ beep(440, 0.04, 0.08, 'triangle'); }
+function sfxCount(){ beep(660, 0.12, 0.25, 'sine'); }
+function sfxStart(){ beep(880, 0.12, 0.3, 'square'); setTimeout(() => beep(1320, 0.2, 0.3, 'square'), 130); }
+function sfxEnd(){ beep(440, 0.2, 0.3, 'sawtooth'); setTimeout(() => beep(330, 0.2, 0.3, 'sawtooth'), 180); setTimeout(() => beep(220, 0.4, 0.3, 'sawtooth'), 360); }
+function sfxGolden(){
+  // キラキラ上昇音
+  [0,80,160,240].forEach((d,i) => setTimeout(() => beep(1000 + i*220, 0.08, 0.3, 'sine'), d));
+}
+function sfxFever(){
+  // 警報風・派手に
+  [0,120,240,360].forEach((d,i) => setTimeout(() => beep(800 + (i%2)*300, 0.15, 0.35, 'square'), d));
+}
+function sfxRegret(){
+  // 下降するため息風
+  beep(330, 0.2, 0.22, 'sawtooth');
+  setTimeout(() => beep(220, 0.35, 0.22, 'sawtooth'), 180);
+}
+// --- 妨害関連SFX ---
+function sfxBomb(){
+  // 低音ドゥン + ノイズ
+  beep(110, 0.18, 0.5, 'sawtooth');
+  setTimeout(() => beep(80,  0.22, 0.45, 'sawtooth'), 60);
+  setTimeout(() => noise(0.25, 0.3), 20);
+}
+function sfxFreeze(){
+  // 高音キラキラ(氷の音)
+  [2000, 2500, 3000, 3500].forEach((f,i) => setTimeout(() => beep(f, 0.08, 0.15, 'triangle'), i*60));
+}
+function sfxFast(){
+  // 上昇スイープ(風を切る)
+  if (!state.audio) return;
+  const o = state.audio.createOscillator();
+  const g = state.audio.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(200, state.audio.currentTime);
+  o.frequency.exponentialRampToValueAtTime(1600, state.audio.currentTime + 0.25);
+  g.gain.setValueAtTime(0.25, state.audio.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, state.audio.currentTime + 0.35);
+  o.connect(g); g.connect(state.audio.destination);
+  o.start(); o.stop(state.audio.currentTime + 0.35);
+}
+function sfxBombHit(){
+  // 爆弾を間違って叩いた時のヤバい音
+  beep(500, 0.06, 0.3, 'square');
+  setTimeout(() => beep(180, 0.3, 0.4, 'sawtooth'), 40);
+  setTimeout(() => noise(0.3, 0.35), 50);
+}
+function sfxTitleClick(){
+  // ボタン押下
+  beep(1200, 0.04, 0.15, 'square');
+}
+// ノイズ音(爆発等に利用)
+function noise(dur, vol){
+  if (!state.audio) return;
+  const ctx = state.audio;
+  const buffer = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i=0; i<data.length; i++){
+    data[i] = (Math.random()*2 - 1) * (1 - i/data.length);  // 減衰ノイズ
+  }
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(vol||0.3, ctx.currentTime);
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(800, ctx.currentTime);
+  source.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+  source.start();
+}
+
+/* =====================================================================
+ *  お題ミッション(毎回違うチャレンジ)
+ * ===================================================================== */
+const MISSION_POOL = [
+  { id:'hit_chick',   title:'🐣 ヒヨコ5匹',   target:5, type:'color', color:'chick',   bonus:10 },
+  { id:'hit_bat',     title:'🦇 コウモリ3匹', target:3, type:'color', color:'bat',     bonus:15 },
+  { id:'hit_pumpkin', title:'🎃 パンプキン1匹',target:1, type:'color', color:'pumpkin', bonus:20 },
+  { id:'combo7',      title:'🔥 7コンボ達成', target:7, type:'combo', bonus:15 },
+  { id:'combo10',     title:'💥 10コンボ達成', target:10, type:'combo', bonus:25 },
+  { id:'score30',     title:'🎯 30点突破',    target:30, type:'score', bonus:15 },
+  { id:'nomiss10',    title:'🏹 ミスなし10匹', target:10, type:'nomiss', bonus:20 },
+  { id:'variety5',    title:'🌈 5種類を叩け',  target:5, type:'variety', bonus:15 },
+];
+
+function pickMission(){
+  // 直近使ったものは避ける
+  const last = state.lastMissionId;
+  const pool = MISSION_POOL.filter(m => m.id !== last);
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+
+function updateMissionProgress(mole, missEvent){
+  if (!state.mission || state.mission.done) return;
+  const m = state.mission;
+  const key = mole && mole.charType && mole.charType.key;
+  if (m.type === 'color' && mole && !missEvent){
+    if (key === m.color) m.progress++;
+  } else if (m.type === 'combo'){
+    m.progress = state.combo;
+  } else if (m.type === 'score'){
+    m.progress = state.score;
+  } else if (m.type === 'nomiss'){
+    if (missEvent){ m.progress = 0; }
+    else if (mole) m.progress++;
+  } else if (m.type === 'variety'){
+    if (mole && key){
+      m._seen = m._seen || new Set();
+      m._seen.add(key);
+      m.progress = m._seen.size;
+    }
+  }
+  if (m.progress >= m.target && !m.done){
+    m.done = true;
+    state.score += m.bonus;
+    updateHud();
+    showMissionComplete(m);
+  }
+  renderMission();
+}
+
+function renderMission(){
+  const el = document.getElementById('missionBox');
+  if (!el) return;
+  const m = state.mission;
+  if (!m){ el.classList.remove('show'); return; }
+  el.classList.add('show');
+  el.classList.toggle('done', !!m.done);
+  el.innerHTML = `<div class="m-title">お題: ${m.title}</div>
+                  <div class="m-prog">${Math.min(m.progress||0, m.target)} / ${m.target} ${m.done ? '✓' : ''}</div>`;
+}
+
+function showMissionComplete(m){
+  const banner = document.createElement('div');
+  banner.className = 'golden-banner';
+  banner.textContent = `ミッション達成! +${m.bonus}`;
+  banner.style.color = '#4caf50';
+  document.querySelector('.stage').appendChild(banner);
+  setTimeout(() => banner.remove(), 1200);
+  sfxGolden();
+  speak('ミッション達成!');
+}
+
+/* =====================================================================
+ *  妨害モード(Sabotage)
+ *  別端末から /sabotage.html で爆弾/凍結/高速化 を送信 → ここで受信&適用
+ * ===================================================================== */
+state.lastSabSeq = 0;
+state.frozenHoles = {};   // holeIdx -> unfreeze timestamp
+state.fastSpeedUntil = 0; // 高速化モードの終了時刻
+state.sabotagePolling = false;
+state._moleIdSeq = 0;
+
+async function pollSabotage(){
+  if (state.phase !== 'playing') return;
+  try {
+    const res = await fetch('/api/sabotage-events?since=' + state.lastSabSeq, {cache:'no-store'});
+    const data = await res.json();
+    for (const ev of (data.events || [])){
+      applySabotage(ev);
+      state.lastSabSeq = Math.max(state.lastSabSeq, ev.seq);
+    }
+  } catch(e){ /* silent */ }
+}
+
+function startSabotagePolling(){
+  if (state.sabotagePolling) return;
+  state.sabotagePolling = true;
+  const tick = () => {
+    if (!state.sabotagePolling) return;
+    pollSabotage();
+    setTimeout(tick, 500);
+  };
+  tick();
+  // 妨害者ミラー用に、メイン状態をサーバーへ定期POST
+  const pushTick = () => {
+    if (!state.sabotagePolling) return;
+    if (state.phase === 'playing' || state.phase === 'preparing'){
+      const remainMs = Math.max(0, (state._roundDurationS||30)*1000 - (Date.now() - state.startT));
+      const moleList = state.moles.filter(m => m.up && !m.hit).map(m => ({
+        id: m.id || 0,
+        x: (m._nx != null ? m._nx : 0.5),
+        y: (m._ny != null ? m._ny : 0.5),
+        char: m.charType && m.charType.key,
+        appearT: m.appearT, upMs: m.upMs,
+      }));
+      fetch('/api/game-status', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          score: state.score,
+          remainS: Math.ceil(remainMs/1000),
+          phase: state.phase,
+          isFever: !!state.isFever,
+          moles: moleList,
+        })
+      }).catch(()=>{});
+    }
+    setTimeout(pushTick, 250);
+  };
+  pushTick();
+}
+function stopSabotagePolling(){ state.sabotagePolling = false; }
+
+function applySabotage(ev){
+  if (ev.action === 'paint'){
+    spawnPaintSplash(ev.x != null ? ev.x : Math.random(),
+                     ev.y != null ? ev.y : Math.random(),
+                     ev.color || '#ff1744');
+    sfxBomb();
+  }
+  // その他のアクションは無効化(妨害=ペイントのみ)
+  const name = ev.name || '妨害者';
+  showAttackBanner(name, '🎨 ペイント!', 'paint');
+}
+
+// ペンキ飛沫を画面に飛ばす
+function spawnPaintSplash(nx, ny, color){
+  const stage = document.querySelector('.stage');
+  const splash = document.createElement('div');
+  splash.className = 'paint-splash';
+  splash.style.setProperty('--p-color', color);
+  splash.style.left = (nx * 100) + '%';
+  splash.style.top = (ny * 100) + '%';
+  splash.style.setProperty('--rot', (Math.random()*360) + 'deg');
+  stage.appendChild(splash);
+  setTimeout(() => splash.remove(), 5500);
+  // 滴り(サブスプラッシュ)を数個
+  for (let i=0; i<4; i++){
+    const drip = document.createElement('div');
+    drip.className = 'paint-drip';
+    drip.style.setProperty('--p-color', color);
+    const dx = (Math.random()-.5) * 20;  // ±10%
+    const dy = (Math.random()-.5) * 20;
+    drip.style.left = (nx * 100 + dx) + '%';
+    drip.style.top = (ny * 100 + dy) + '%';
+    drip.style.width = (3 + Math.random()*5) + 'vh';
+    drip.style.height = drip.style.width;
+    stage.appendChild(drip);
+    setTimeout(() => drip.remove(), 5500);
+  }
+}
+
+/* 誰が何をしたか、でっかく名前表示 */
+function showAttackBanner(name, actText, action){
+  const stage = document.querySelector('.stage');
+  const el = document.createElement('div');
+  el.className = 'attack-banner';
+  const actEmoji = action === 'bomb' ? '💣' : action === 'fast' ? '⚡' : action === 'wave' ? '🌊' : '✨';
+  el.innerHTML = `<span class="atk-from">${escapeHtml(name)} より</span>
+                  <span class="atk-main">${actEmoji} ${actText}</span>`;
+  stage.appendChild(el);
+  setTimeout(() => el.remove(), 2000);
+  speak(`${name}の妨害!`);
+}
+
+function dropBombAnim(targetHole, onLand){
+  const stage = document.querySelector('.stage');
+  const bomb = document.createElement('div');
+  bomb.className = 'bomb-drop';
+  bomb.textContent = '💣';
+  // 落下先の座標を計算
+  if (targetHole){
+    const rect = targetHole.getBoundingClientRect();
+    bomb.style.setProperty('--target-y', (rect.top + rect.height*0.4) + 'px');
+    bomb.style.left = (rect.left + rect.width/2) + 'px';
+  }
+  stage.appendChild(bomb);
+  setTimeout(() => {
+    bomb.remove();
+    // 爆発フラッシュ
+    const ex = document.createElement('div');
+    ex.className = 'bomb-explosion';
+    if (targetHole){
+      const rect = targetHole.getBoundingClientRect();
+      ex.style.setProperty('--ex-x', (rect.left + rect.width/2) + 'px');
+      ex.style.setProperty('--ex-y', (rect.top + rect.height/2) + 'px');
+    }
+    stage.appendChild(ex);
+    setTimeout(() => ex.remove(), 600);
+    if (onLand) onLand();
+  }, 700);
+}
+
+function freezeAnim(){
+  const stage = document.querySelector('.stage');
+  const ov = document.createElement('div');
+  ov.className = 'freeze-overlay';
+  stage.appendChild(ov);
+  setTimeout(() => ov.remove(), 800);
+  // 氷の結晶が画面にいくつか降る
+  for (let i=0; i<12; i++){
+    const ice = document.createElement('div');
+    ice.className = 'ice-crystal';
+    ice.textContent = ['❄','❅','❆','*','✺'][Math.floor(Math.random()*5)];
+    ice.style.left = (Math.random() * 90 + 2) + 'vw';
+    ice.style.top = (-10 - Math.random()*20) + 'vh';
+    ice.style.animationDelay = (Math.random()*0.3) + 's';
+    ice.style.fontSize = (4 + Math.random()*6) + 'vh';
+    stage.appendChild(ice);
+    setTimeout(() => ice.remove(), 1200);
+  }
+}
+
+function fastAnim(){
+  const stage = document.querySelector('.stage');
+  let sl = stage.querySelector('.speed-lines');
+  if (!sl){
+    sl = document.createElement('div');
+    sl.className = 'speed-lines';
+    stage.appendChild(sl);
+  }
+  sl.classList.remove('show'); void sl.offsetWidth;
+  sl.classList.add('show');
+  setTimeout(() => { if (sl) sl.classList.remove('show'); }, 4000);
+}
+
+function renderSabotageStats(stats){
+  const el = document.getElementById('sabStats');
+  if (!el) return;
+  if (!stats || stats.length === 0){ el.classList.remove('show'); return; }
+  el.classList.add('show');
+  let html = '<div class="sab-stats-title">🕷 妨害者の活躍 🕷</div>';
+  stats.forEach((s, i) => {
+    const parts = [];
+    if (s.bomb) parts.push(`💣×${s.bomb}`);
+    if (s.wave) parts.push(`🌊×${s.wave}`);
+    if (s.fast) parts.push(`⚡×${s.fast}`);
+    html += `<div class="sab-stats-row ${i===0?'r1':''}">
+      <span class="rank">${i+1}位</span>
+      <span class="name">${escapeHtml(s.name)}</span>
+      <span class="actions">${parts.join(' ')}</span>
+      <span class="total">計${s.total}</span>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+function showSabotageBanner(text, color){
+  const el = document.createElement('div');
+  el.className = 'golden-banner';
+  el.textContent = text;
+  el.style.color = color || '#ff5252';
+  document.querySelector('.stage').appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+/* =====================================================================
+ *  ハイスコア(localStorage)
+ * ===================================================================== */
+const HISCORE_KEY = 'wani_hiscores_v1';
+const HISCORE_LIMIT = 10;
+
+function loadHiScores(){
+  try {
+    const raw = localStorage.getItem(HISCORE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch(e) { return []; }
+}
+function saveHiScores(list){
+  try { localStorage.setItem(HISCORE_KEY, JSON.stringify(list)); } catch(e){}
+}
+function addHiScore(name, score, mode){
+  const list = loadHiScores();
+  list.push({name: String(name).slice(0,10) || 'YOU', score, mode, at: Date.now()});
+  list.sort((a,b) => (b.score||0) - (a.score||0));
+  const trimmed = list.slice(0, HISCORE_LIMIT);
+  saveHiScores(trimmed);
+  return trimmed;
+}
+function qualifiesForHiScore(score){
+  const list = loadHiScores();
+  if (list.length < HISCORE_LIMIT) return true;
+  return score > (list[list.length-1].score || 0);
+}
+function renderHiScores(containerId){
+  const list = loadHiScores();
+  const el = document.getElementById(containerId || 'hiscoreList');
+  if (!el) return;
+  if (list.length === 0){
+    el.innerHTML = '<div class="hiscore-empty">まだ誰もいない<br>最初の記録を残せ!</div>';
+    return;
+  }
+  el.innerHTML = '';
+  list.forEach((e,i) => {
+    const row = document.createElement('div');
+    row.className = 'hiscore-row' + (i===0?' r1':i===1?' r2':i===2?' r3':'');
+    row.innerHTML = `
+      <span class="rank">${i+1}</span>
+      <span class="name">${escapeHtml(e.name)}</span>
+      <span class="sc">${e.score}</span>
+    `;
+    el.appendChild(row);
+  });
+}
+
+/* =====================================================================
+ *  モードセレクター
+ * ===================================================================== */
+state.mode = 'normal';
+function initModeButtons(){
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      ensureAudio();
+      playTitleBgm();  // モード選択でタイトルBGM開始(ユーザー操作でアンロック)
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.mode = btn.dataset.mode || 'normal';
+      sfxTitleClick();
+    });
+  });
+}
+
+/* =====================================================================
+ *  Bootstrap
+ * ===================================================================== */
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('retryBtn').addEventListener('click', () => {
+  document.getElementById('resultScreen').classList.add('hidden');
+  document.getElementById('titleScreen').classList.remove('hidden');
+  playTitleBgm();
+});
+initHoles();
+initModeButtons();
+
+// タイトル画面: 最初のユーザー操作で全BGMを unlock + タイトルBGM再生
+(function setupTitleBgmAutoStart(){
+  let started = false;
+  function unlock(){
+    if (started) return;
+    started = true;
+    ensureAudio();
+    // iOS Safari: すべての<audio>を空打ちしてunlock(まとめて)
+    ['bgmTitle','bgm','bgmFever'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      try {
+        el.muted = true;
+        const p = el.play();
+        if (p && p.then) p.then(() => {
+          el.pause();
+          el.currentTime = 0;
+          el.muted = false;
+        }).catch(() => { el.muted = false; });
+      } catch(e){}
+    });
+    // タイトルBGMを少し遅れて再生開始(unlock完了後)
+    setTimeout(() => playTitleBgm(), 150);
+  }
+  document.addEventListener('click', unlock, {once:true, passive:true});
+  document.addEventListener('touchstart', unlock, {once:true, passive:true});
+  document.addEventListener('keydown', unlock, {once:true});
+})();
+</script>
+</body>
+</html>

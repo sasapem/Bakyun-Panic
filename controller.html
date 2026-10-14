@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>AIワニワニ - コントローラー</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:manipulation;}
+html,body{width:100%;height:100%;overflow:hidden;background:#111;font-family:-apple-system,"Hiragino Maru Gothic ProN",sans-serif;color:#fff;}
+body{display:flex;flex-direction:column;}
+
+.top-bar{flex:0 0 auto;padding:2vh 4vw;display:flex;justify-content:space-between;align-items:center;gap:2vw;background:#222;}
+.name-chip{display:flex;align-items:center;gap:2vw;font-size:5vw;font-weight:bold;}
+.color-dot{width:6vw;height:6vw;border-radius:50%;border:2px solid #fff;}
+.score-big{font-size:8vw;font-weight:bold;color:#ffeb3b;}
+.combo-chip{font-size:4vw;background:#ff4081;padding:.5vh 2vw;border-radius:100px;display:none;}
+.combo-chip.show{display:inline-block;}
+
+.phase-banner{flex:0 0 auto;text-align:center;padding:2vh;font-size:5vw;font-weight:bold;background:#1e88e5;}
+.phase-banner.playing{background:#43a047;}
+.phase-banner.over{background:#c62828;}
+.phase-banner.waiting{background:#555;}
+
+.grid-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:4vw;background:linear-gradient(180deg,#3e2723,#1b0e08);}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:3vw;width:100%;max-width:500px;aspect-ratio:1;}
+.cell{background:#5d4037;border:4px solid #3e2723;border-radius:6vw;display:flex;align-items:center;justify-content:center;font-size:10vw;color:#fff;position:relative;overflow:hidden;box-shadow:inset 0 6px 12px rgba(0,0,0,.4);}
+.cell:active{transform:scale(.95);}
+.cell.tapped{animation:tapFlash .25s;}
+@keyframes tapFlash{0%{background:#ffeb3b;}100%{background:#5d4037;}}
+.cell.hit{animation:hitFlash .4s;}
+@keyframes hitFlash{0%{background:#4caf50;}100%{background:#5d4037;}}
+.cell.miss{animation:missFlash .3s;}
+@keyframes missFlash{0%{background:#f44336;}100%{background:#5d4037;}}
+
+.join-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5vw;background:linear-gradient(160deg,#004d40,#00695c);}
+.join-title{font-size:10vw;font-weight:bold;color:#ffeb3b;text-shadow:3px 3px 0 #000;margin-bottom:2vh;text-align:center;letter-spacing:.1em;}
+.join-sub{font-size:4vw;opacity:.9;margin-bottom:4vh;text-align:center;line-height:1.6;}
+.name-input{width:80vw;max-width:400px;padding:2.5vh 4vw;font-size:6vw;background:rgba(255,255,255,.1);border:2px solid #fff;border-radius:3vw;color:#fff;font-family:inherit;text-align:center;margin-bottom:3vh;}
+.name-input::placeholder{color:rgba(255,255,255,.5);}
+.join-btn{padding:2.5vh 12vw;font-size:6vw;background:#ff5252;color:#fff;border:3px solid #fff;border-radius:100px;font-family:inherit;font-weight:bold;box-shadow:0 6px 0 #b71c1c;}
+.join-btn:active{transform:translateY(3px);box-shadow:0 3px 0 #b71c1c;}
+</style>
+</head>
+<body>
+<div id="joinScreen" class="join-screen">
+  <div class="join-title">AIワニワニ</div>
+  <div class="join-sub">名前を入れて、<br>大画面のワニを叩け!</div>
+  <input class="name-input" id="nameInput" placeholder="名前(省略可)" maxlength="10">
+  <button class="join-btn" id="joinBtn">参加する</button>
+</div>
+
+<div id="mainScreen" style="display:none;flex:1;flex-direction:column;">
+  <div class="top-bar">
+    <div class="name-chip"><span class="color-dot" id="myColor"></span><span id="myName">—</span></div>
+    <div class="combo-chip" id="myCombo">🔥 <span id="myComboNum">0</span></div>
+    <div class="score-big">💥 <span id="myScore">0</span></div>
+  </div>
+  <div class="phase-banner waiting" id="phaseBanner">大画面で開始を待ってください</div>
+  <div class="grid-wrap">
+    <div class="grid" id="grid">
+      <div class="cell" data-col="0" data-row="0">1</div>
+      <div class="cell" data-col="1" data-row="0">2</div>
+      <div class="cell" data-col="2" data-row="0">3</div>
+      <div class="cell" data-col="0" data-row="1">4</div>
+      <div class="cell" data-col="1" data-row="1">5</div>
+      <div class="cell" data-col="2" data-row="1">6</div>
+      <div class="cell" data-col="0" data-row="2">7</div>
+      <div class="cell" data-col="1" data-row="2">8</div>
+      <div class="cell" data-col="2" data-row="2">9</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let myId=null, myColor='#888', myName='';
+
+async function joinGame(){
+  const name = document.getElementById('nameInput').value.trim();
+  try{
+    const res = await fetch('/api/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+    const data = await res.json();
+    myId = data.id; myColor = data.color; myName = data.name;
+    document.getElementById('myColor').style.background = myColor;
+    document.getElementById('myName').textContent = myName;
+    document.getElementById('joinScreen').style.display='none';
+    document.getElementById('mainScreen').style.display='flex';
+    startPolling();
+  }catch(e){
+    alert('参加できませんでした: '+e.message);
+  }
+}
+
+function cellEl(col,row){
+  return document.querySelector(`.cell[data-col="${col}"][data-row="${row}"]`);
+}
+
+async function onTap(ev){
+  const target = ev.currentTarget;
+  const col = parseInt(target.dataset.col);
+  const row = parseInt(target.dataset.row);
+  target.classList.remove('tapped','hit','miss');
+  void target.offsetWidth;
+  target.classList.add('tapped');
+  if(!myId) return;
+  try{
+    const res = await fetch('/api/tap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:myId,col,row})});
+    const d = await res.json();
+    target.classList.remove('tapped');
+    void target.offsetWidth;
+    target.classList.add(d.hit ? 'hit' : 'miss');
+    if(typeof d.score==='number') document.getElementById('myScore').textContent=d.score;
+    if(typeof d.combo==='number'){
+      const cc = document.getElementById('myCombo');
+      if(d.combo>=2){cc.classList.add('show');document.getElementById('myComboNum').textContent=d.combo;}
+      else cc.classList.remove('show');
+    }
+    if(navigator.vibrate) navigator.vibrate(d.hit?[30,20,30]:15);
+  }catch(e){console.log('tap err',e);}
+}
+
+document.querySelectorAll('.cell').forEach(c => c.addEventListener('touchstart', onTap, {passive:true}));
+document.querySelectorAll('.cell').forEach(c => c.addEventListener('mousedown', onTap));
+
+async function startPolling(){
+  while(true){
+    try{
+      const res = await fetch('/api/state');
+      const s = await res.json();
+      const banner = document.getElementById('phaseBanner');
+      banner.className = 'phase-banner ' + s.phase;
+      if(s.phase==='waiting') banner.textContent = '大画面で開始を待ってください';
+      else if(s.phase==='countdown') banner.textContent = 'まもなく開始…';
+      else if(s.phase==='playing') banner.textContent = '⏱ 残り ' + Math.ceil(s.remainingMs/1000) + 's';
+      else if(s.phase==='over') banner.textContent = '🏁 終了! 大画面で結果を見て';
+      // update own score from state
+      const me = (s.players||[]).find(p => p.id === myId);
+      if(me){
+        document.getElementById('myScore').textContent = me.score;
+        const cc = document.getElementById('myCombo');
+        if(me.combo>=2){cc.classList.add('show');document.getElementById('myComboNum').textContent=me.combo;}
+        else cc.classList.remove('show');
+      }
+    }catch(e){}
+    await new Promise(r=>setTimeout(r,300));
+  }
+}
+
+document.getElementById('joinBtn').addEventListener('click', joinGame);
+document.getElementById('nameInput').addEventListener('keydown', e=>{if(e.key==='Enter')joinGame();});
+</script>
+</body>
+</html>
